@@ -82,6 +82,20 @@ test("vectorSearch maps scored points", async () => {
   assert.deepEqual(hits, [{ id: "a", score: 0.91, payload: { t: "x" }, vector: undefined }]);
 });
 
+test("getRecord retrieves with the vector included", async () => {
+  const calls = stubFetch({
+    "POST /collections/docs/points": {
+      result: [{ id: 7, payload: { t: "x" }, vector: [0.1, 0.2] }],
+      status: "ok",
+      time: 0,
+    },
+  });
+  const rec = await conn().getRecord("docs", 7);
+  assert.deepEqual(rec, { id: 7, payload: { t: "x" }, vector: [0.1, 0.2] });
+  const body = JSON.parse((calls[0]?.init?.body as string) ?? "{}");
+  assert.equal(body.with_vector, true);
+});
+
 test("http errors become ConnectorError with status", async () => {
   stubFetch({});
   await assert.rejects(

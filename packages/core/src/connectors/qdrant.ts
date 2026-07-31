@@ -227,11 +227,15 @@ export class QdrantConnector implements VectorConnector {
   }
 
   async getRecord(collection: string, id: string | number): Promise<VectorRecord> {
-    const res = await this.http.get<QdrantEnvelope<QdrantPoint>>(
-      `/collections/${encodeURIComponent(collection)}/points/${encodeURIComponent(String(id))}`,
+    // Use the batch-retrieve endpoint so the vector is included (the single-GET
+    // form omits it), which "search by example" and the inspector rely on.
+    const res = await this.http.post<QdrantEnvelope<QdrantPoint[]>>(
+      `/collections/${encodeURIComponent(collection)}/points`,
+      { ids: [id], with_payload: true, with_vector: true },
     );
-    if (!res.result) throw new ConnectorError(`Point ${id} not found`, "qdrant", 404);
-    return this.toRecord(res.result);
+    const point = res.result?.[0];
+    if (!point) throw new ConnectorError(`Point ${id} not found`, "qdrant", 404);
+    return this.toRecord(point);
   }
 
   async upsertRecords(collection: string, records: VectorRecord[]): Promise<UpsertResult> {

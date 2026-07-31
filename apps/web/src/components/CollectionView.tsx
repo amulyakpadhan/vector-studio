@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Json, VectorConnector, VectorRecord } from "@vyn/core";
 import { RecordDrawer } from "./RecordDrawer";
 import { ProjectionView } from "./ProjectionView";
+import { SearchView } from "./SearchView";
 
 interface Props {
   connector: VectorConnector;
@@ -17,7 +18,7 @@ const PAGE_SIZE = 25;
 
 export function CollectionView({ connector, connectionId, collection, onDeleted }: Props) {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"data" | "viz">("data");
+  const [tab, setTab] = useState<"data" | "search" | "viz">("data");
   // Cursor stack: cursorStack[i] is the cursor that produced page i. First page = undefined.
   const [cursorStack, setCursorStack] = useState<(string | undefined)[]>([undefined]);
   const [pageIndex, setPageIndex] = useState(0);
@@ -97,6 +98,9 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
         <button className={`tab ${tab === "data" ? "active" : ""}`} onClick={() => setTab("data")}>
           Data
         </button>
+        <button className={`tab ${tab === "search" ? "active" : ""}`} onClick={() => setTab("search")}>
+          Search
+        </button>
         <button className={`tab ${tab === "viz" ? "active" : ""}`} onClick={() => setTab("viz")}>
           Visualize
         </button>
@@ -104,6 +108,8 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
 
       {tab === "viz" ? (
         <ProjectionView connector={connector} collection={collection} />
+      ) : tab === "search" ? (
+        <SearchView connector={connector} collection={collection} onChanged={refresh} />
       ) : (
         <>
       {records.isError && <div className="banner err">{(records.error as Error).message}</div>}
