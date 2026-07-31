@@ -1,0 +1,23 @@
+{
+  "name": "@vyn/bridge",
+  "version": "0.1.0",
+  "description": "Vyn Studio local bridge — a tiny localhost proxy that lets the browser studio reach self-hosted and CORS-restricted vector DBs. Zero dependencies.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "bin": {
+    "vyn-bridge": "./bin/vyn-bridge.mjs"
+  },
+  "files": ["dist", "bin"],
+  "scripts": {
+    "start": "node --experimental-strip-types src/cli.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test --experimental-strip-types test/*.test.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0",
+    "@types/node": "^22.0.0"
+  }
+}
