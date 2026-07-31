@@ -106,6 +106,12 @@ pnpm bridge        # or: npx @vyn/bridge
 
 The studio auto-detects it and offers to route the connection through it.
 
+## Deployment
+
+The studio is fully client-side and deploys as a static/SSR Next.js app on
+Vercel's free tier — no server or database to provision. See
+[`docs/DEPLOY.md`](docs/DEPLOY.md).
+
 ## Development
 
 ```bash
