@@ -208,7 +208,7 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
               : "Only needed for self-hosted or CORS-restricted databases."}
             {bridge.status === "offline" && (
               <>
-                {" "}Run <code style={{ color: "var(--accent-bright)" }}>npx @vyn/bridge</code> then{" "}
+                {" "}Clone the repo and run <code style={{ color: "var(--accent-bright)" }}>pnpm bridge</code> then{" "}
                 <button type="button" className="btn ghost sm" style={{ padding: "1px 6px" }} onClick={bridge.recheck}>
                   re-check
                 </button>
@@ -218,7 +218,7 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
         </div>
 
         {useBridgeOn && bridge.status === "offline" && (
-          <div className="banner err">The bridge isn’t running — start it with `npx @vyn/bridge` or this connection won’t reach the database.</div>
+          <div className="banner err">The bridge isn’t running — start it with `pnpm bridge` from the repo, or this connection won’t reach the database.</div>
         )}
 
         {test.kind === "ok" && (

@@ -40,9 +40,10 @@ as Compass, TablePlus, and Postman.
   them to 3D with **UMAP**, and explore them as a glowing point cloud. Color by any
   metadata field. **Click any point to light up its nearest neighbors** — a live
   similarity query, visualized, with no embedding API required.
-- **Local bridge** — a tiny optional proxy (`npx @vyn/bridge`) that lets the browser
-  reach self-hosted DBs on `localhost` and CORS-restricted clouds, without your data
-  leaving your machine.
+- **Local bridge** — a tiny optional proxy (`pnpm bridge`, run from this repo) that
+  lets the browser reach self-hosted DBs on `localhost` and CORS-restricted clouds,
+  without your data leaving your machine. Not yet published to npm, so it's run from
+  a clone for now (see Quickstart below).
 
 <div align="center">
 <br/>
@@ -90,21 +91,22 @@ Requires Node 20+ and pnpm.
 
 ```bash
 pnpm install
-pnpm --filter @vyn/core build      # connectors are consumed as built output
 pnpm --filter @vyn/web dev         # open http://localhost:3000
 ```
 
 Add a connection (a Qdrant URL, or a Pinecone API key), open it, and browse. Hit the
 **Visualize** tab on any collection to project it.
 
-**Self-hosted or Pinecone?** Run the bridge in a second terminal so the browser can
-reach it:
+**Self-hosted or Pinecone?** The browser can't reach `localhost` databases or
+Pinecone's API directly (CORS), so run the bridge in a second terminal:
 
 ```bash
-pnpm bridge        # or: npx @vyn/bridge
+pnpm bridge        # requires Node 22.6+
 ```
 
-The studio auto-detects it and offers to route the connection through it.
+The studio auto-detects it and offers to route the connection through it. (The
+bridge isn't published to npm yet — for now it's run from a clone of this repo,
+same as above. `npx @vyn/bridge` will work once it ships as a standalone package.)
 
 ## Deployment
 

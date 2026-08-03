@@ -11,10 +11,18 @@ you run locally. Zero dependencies — just Node.
 
 ## Run it
 
+Not yet published to npm — for now, run it from a clone of this repo:
+
 ```bash
-npx @vyn/bridge
+git clone https://github.com/amulyakpadhan/vector-studio.git
+cd vector-studio
+pnpm install
+pnpm bridge
 # ⬡  Vyn bridge v0.1.0  — listening on http://127.0.0.1:7391
 ```
+
+Requires Node 22.6+ (uses `--experimental-strip-types` to run the TypeScript
+source directly — no build step). Once published, this becomes `npx @vyn/bridge`.
 
 The studio auto-detects it (`GET /health`) and shows **“bridge: detected”**
 in the connection form. Keep it running while you work.
