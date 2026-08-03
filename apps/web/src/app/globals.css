@@ -52,6 +52,9 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  /* Nothing should ever push the page sideways on a phone; wide content
+     (tables, code) scrolls inside its own container instead. */
+  overflow-x: hidden;
 }
 
 a {
@@ -696,6 +699,99 @@ tbody tr:hover {
   50% { transform: translateY(6px); opacity: 1; }
 }
 
+/* ── entrance animations ─────────────────────────────────── */
+
+/* Characters converge into place out of a scattered blur, like values
+   snapping onto a grid. */
+.lp-word {
+  display: inline-block;
+  white-space: pre;
+}
+.lp-char {
+  display: inline-block;
+  opacity: 0;
+  animation: charIn 0.75s cubic-bezier(0.2, 0.9, 0.25, 1) forwards;
+  will-change: transform, opacity, filter;
+}
+/* Each character clips its own slice of the brand ramp; the inline
+   background-size/position (set in the component) line the slices up so the
+   gradient reads as one continuous sweep across the phrase. */
+.lp-char-grad {
+  background-image: var(--grad);
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+@keyframes charIn {
+  0% {
+    opacity: 0;
+    transform: translateY(0.42em) scale(0.86);
+    filter: blur(9px);
+  }
+  60% {
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+
+.lp-fade {
+  opacity: 0;
+  animation: fadeUp 0.85s cubic-bezier(0.2, 0.9, 0.25, 1) forwards;
+}
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.lp-hint {
+  margin-top: 22px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}
+
+/* Scroll-triggered reveal for the feature cards. */
+.lp-reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.7s cubic-bezier(0.2, 0.9, 0.25, 1),
+    transform 0.7s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.lp-reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-char,
+  .lp-fade {
+    animation: none;
+    opacity: 1;
+    filter: none;
+    transform: none;
+  }
+  .lp-reveal {
+    transition: none;
+    opacity: 1;
+    transform: none;
+  }
+  .lp-scroll-hint {
+    animation: none;
+  }
+}
+
 .lp-feature.right {
   align-items: flex-end;
   text-align: right;
@@ -743,4 +839,118 @@ tbody tr:hover {
   margin-top: 26px;
   color: var(--text-faint);
   font-size: 13px;
+}
+
+.lp-brand-sub {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+/* ─── responsive ─────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  /* Studio: the collection list becomes a horizontal strip above the
+     content instead of a fixed sidebar that eats half a phone screen. */
+  .studio {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 190px;
+  }
+  .main {
+    padding: 18px 16px;
+  }
+  .container {
+    padding: 22px 16px 48px;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    height: auto;
+    min-height: 56px;
+    padding: 10px 14px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .crumbs {
+    order: 3;
+    width: 100%;
+    font-size: 12.5px;
+  }
+
+  .section-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  /* Stacked form rows and full-width controls beat cramped columns. */
+  .row2 {
+    grid-template-columns: 1fr;
+  }
+  .modal {
+    padding: 18px;
+    border-radius: 14px;
+  }
+  .modal-foot {
+    flex-wrap: wrap;
+  }
+  .toolbar > .input,
+  .toolbar > .select {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  /* Landing */
+  .lp-nav {
+    padding: 12px 14px;
+  }
+  .lp-nav-github {
+    display: none; /* the footer CTA still links to GitHub */
+  }
+  .lp-hero,
+  .lp-feature,
+  .lp-final {
+    padding: 0 18px;
+    min-height: 92vh;
+  }
+  .lp-eyebrow {
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    margin-bottom: 16px;
+  }
+  .lp-lead {
+    font-size: 15px;
+    margin-top: 20px;
+  }
+  .lp-cta {
+    width: 100%;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .lp-cta .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .lp-scroll-hint {
+    margin-top: 40px;
+  }
+
+  /* Feature cards read left-aligned on narrow screens; the alternating
+     left/right rhythm only makes sense with room to alternate. */
+  .lp-feature.right {
+    align-items: stretch;
+    text-align: left;
+  }
+  .lp-feature-card {
+    max-width: none;
+    padding: 22px;
+  }
+  .lp-feature-card p {
+    font-size: 15px;
+  }
 }

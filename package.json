@@ -1,5 +1,5 @@
 {
-  "name": "vyn-studio",
+  "name": "vector-studio",
   "private": true,
   "version": "0.1.0",
   "description": "The universal studio for vector databases — connect, browse, search, and visualize any vector DB.",

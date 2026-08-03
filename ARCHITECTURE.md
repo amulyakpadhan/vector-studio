@@ -19,7 +19,7 @@
 Managed with **pnpm workspaces + Turborepo**.
 
 ```
-vyn-studio/
+vector-studio/
 ├── apps/
 │   ├── web/                  # Next.js 15 — landing page + studio UI
 │   │   ├── app/(landing)/    # 3D scroll-driven landing (R3F + GSAP)

@@ -46,4 +46,4 @@ instead of pretending they're all identical.
 - Credentials live wherever the caller puts them; this library never persists
   or transmits them anywhere except to the database you point it at.
 
-Part of [Vyn Studio](https://github.com/amulyakpadhan/vyn-studio).
+Part of [Vyn Studio](https://github.com/amulyakpadhan/vector-studio).
