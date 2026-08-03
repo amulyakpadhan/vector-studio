@@ -264,11 +264,23 @@ export class WeaviateConnector implements VectorConnector {
     const meta = await this.classMeta(collection);
     // bm25/hybrid report `score`, not `distance` — same reasoning as above.
     const fields = this.selectionFields(meta.properties, "score", false);
-    const operator = query.mode === "hybrid" ? "hybrid" : "bm25";
-    const gql = `query Search($q: String!, $limit: Int) {
-      Get { ${collection}(${operator}: { query: $q }, limit: $limit) { ${fields} } }
+    const hasVector = query.mode === "hybrid" && query.vector !== undefined;
+    // Passing our own query vector lets hybrid genuinely blend keyword +
+    // vector relevance even when the collection has no server-side vectorizer.
+    // GraphQL rejects a declared-but-unused variable, so $vec only appears
+    // in the operation signature when we actually reference it below.
+    const args = hasVector
+      ? `hybrid: { query: $q, vector: $vec }`
+      : query.mode === "hybrid"
+        ? `hybrid: { query: $q }`
+        : `bm25: { query: $q }`;
+    const varsDecl = hasVector ? "$q: String!, $vec: [Float!], $limit: Int" : "$q: String!, $limit: Int";
+    const gql = `query Search(${varsDecl}) {
+      Get { ${collection}(${args}, limit: $limit) { ${fields} } }
     }`;
-    const hits = await this.runGet(collection, gql, { q: query.text, limit: query.limit });
+    const variables: Record<string, unknown> = { q: query.text, limit: query.limit };
+    if (hasVector) variables.vec = query.vector;
+    const hits = await this.runGet(collection, gql, variables);
     return hits.map((h) => this.toSearchResult(h, meta.properties, "score"));
   }
 

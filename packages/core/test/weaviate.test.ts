@@ -131,6 +131,40 @@ test("textSearch bm25 reads _additional.score and never requests distance", asyn
   assert.doesNotMatch((gqlCall.body as any).query, /distance/);
 });
 
+test("textSearch hybrid with a supplied vector blends keyword + vector", async () => {
+  const calls = stubFetch((method, path) => {
+    if (path === "/v1/schema/Docs") return DOCS_CLASS;
+    if (path === "/v1/graphql") {
+      return { data: { Get: { Docs: [{ title: "hi", _additional: { id: "x", score: "0.9" } }] } } };
+    }
+    return {};
+  });
+  const hits = await conn().textSearch("Docs", {
+    text: "hello",
+    mode: "hybrid",
+    limit: 3,
+    vector: [0.1, 0.2],
+  });
+  assert.equal(hits[0]!.id, "x");
+  const gqlCall = calls.find((c) => c.path === "/v1/graphql")!;
+  assert.match((gqlCall.body as any).query, /hybrid:\s*\{\s*query:\s*\$q,\s*vector:\s*\$vec\s*\}/);
+  assert.deepEqual((gqlCall.body as any).variables.vec, [0.1, 0.2]);
+});
+
+test("textSearch hybrid without a vector omits the $vec variable entirely", async () => {
+  const calls = stubFetch((method, path) => {
+    if (path === "/v1/schema/Docs") return DOCS_CLASS;
+    if (path === "/v1/graphql") {
+      return { data: { Get: { Docs: [{ title: "hi", _additional: { id: "y", score: "0.5" } }] } } };
+    }
+    return {};
+  });
+  await conn().textSearch("Docs", { text: "hello", mode: "hybrid", limit: 3 });
+  const gqlCall = calls.find((c) => c.path === "/v1/graphql")!;
+  assert.doesNotMatch((gqlCall.body as any).query, /\$vec/);
+  assert.equal((gqlCall.body as any).variables.vec, undefined);
+});
+
 test("GraphQL errors surface as ConnectorError", async () => {
   stubFetch((method, path) => {
     if (path === "/v1/schema/Docs") return DOCS_CLASS;

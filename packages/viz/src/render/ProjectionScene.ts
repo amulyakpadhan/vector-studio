@@ -291,9 +291,11 @@ const FRAG = /* glsl */ `
     vec2 uv = gl_PointCoord - vec2(0.5);
     float d = length(uv);
     if (d > 0.5) discard;
-    float core = smoothstep(0.5, 0.0, d);
-    float glow = smoothstep(0.5, 0.15, d);
-    vec3 col = vColor * (0.65 + 0.35 * glow);
-    gl_FragColor = vec4(col, core);
+    // Solid disc with only a thin anti-aliased edge (crisp, not a soft blob),
+    // plus a subtle brighter-center / darker-rim falloff for a glassy look.
+    float alpha = smoothstep(0.5, 0.42, d);
+    float rim = smoothstep(0.15, 0.5, d);
+    vec3 col = mix(vColor * 1.2, vColor * 0.82, rim);
+    gl_FragColor = vec4(col, alpha);
   }
 `;

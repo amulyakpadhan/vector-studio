@@ -17,6 +17,10 @@ export interface SavedConnection {
   apiKey?: string;
   /** Local bridge base URL for self-hosted DBs behind CORS (Phase 1). */
   bridgeUrl?: string;
+  /** Optional OpenAI key for client-side query embedding (semantic/hybrid
+   * search on collections with no server-side vectorizer). Sent only to
+   * the embedding provider's API, never to any server of ours. */
+  embeddingApiKey?: string;
   createdAt: number;
 }
 

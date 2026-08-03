@@ -114,6 +114,9 @@ export interface TextQuery {
   mode: "keyword" | "hybrid";
   limit: number;
   filter?: Json;
+  /** Pre-computed query embedding — lets hybrid genuinely blend keyword +
+   * vector relevance even on collections with no server-side vectorizer. */
+  vector?: number[];
 }
 
 export interface SearchResult {

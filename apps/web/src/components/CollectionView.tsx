@@ -109,7 +109,7 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
       {tab === "viz" ? (
         <ProjectionView connector={connector} collection={collection} />
       ) : tab === "search" ? (
-        <SearchView connector={connector} collection={collection} onChanged={refresh} />
+        <SearchView connector={connector} connectionId={connectionId} collection={collection} onChanged={refresh} />
       ) : (
         <>
       {records.isError && <div className="banner err">{(records.error as Error).message}</div>}

@@ -2,31 +2,40 @@
 
 import { useMemo, useState } from "react";
 import type { Json, SearchResult, VectorConnector, VectorRecord } from "@vyn/core";
+import { useConnections } from "@/lib/store";
+import { embedText, EmbeddingError } from "@/lib/embeddings";
 import { RecordDrawer } from "./RecordDrawer";
 
 interface Props {
   connector: VectorConnector;
+  connectionId: string;
   collection: string;
   onChanged: () => void;
 }
 
-type Mode = "keyword" | "hybrid" | "similar" | "vector";
+type Mode = "keyword" | "hybrid" | "semantic" | "similar" | "vector";
 
 const MODE_LABELS: Record<Mode, string> = {
   keyword: "Keyword",
   hybrid: "Hybrid",
+  semantic: "Semantic (auto-embed)",
   similar: "Similar to record",
   vector: "Raw vector",
 };
 
-export function SearchView({ connector, collection, onChanged }: Props) {
+export function SearchView({ connector, connectionId, collection, onChanged }: Props) {
   const caps = connector.capabilities();
+  const conn = useConnections((s) => s.get(connectionId));
+  const updateConn = useConnections((s) => s.update);
 
+  // "Semantic" works on every engine (it's just embed-then-vectorSearch), so
+  // it's always offered — the modes list adapts to the rest of what the
+  // engine can actually do.
   const modes = useMemo(() => {
     const list: Mode[] = [];
     if (caps.textSearch) list.push("keyword");
     if (caps.hybridSearch) list.push("hybrid");
-    list.push("similar", "vector"); // available on any engine with vector search
+    list.push("semantic", "similar", "vector");
     return list;
   }, [caps]);
 
@@ -35,11 +44,15 @@ export function SearchView({ connector, collection, onChanged }: Props) {
   const [recordId, setRecordId] = useState("");
   const [vectorText, setVectorText] = useState("");
   const [limit, setLimit] = useState(10);
+  const [apiKey, setApiKey] = useState(conn?.embeddingApiKey ?? "");
 
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inspect, setInspect] = useState<VectorRecord | null>(null);
+
+  const needsEmbedding = mode === "semantic" || mode === "hybrid";
+  const embeddingRequired = mode === "semantic";
 
   const columns = useMemo(() => {
     const keys = new Set<string>();
@@ -47,15 +60,32 @@ export function SearchView({ connector, collection, onChanged }: Props) {
     return [...keys].slice(0, 6);
   }, [results]);
 
+  function saveApiKey(value: string) {
+    setApiKey(value);
+    updateConn(connectionId, { embeddingApiKey: value.trim() || undefined });
+  }
+
   async function run() {
     setBusy(true);
     setError(null);
     try {
       let hits: SearchResult[];
-      if (mode === "keyword" || mode === "hybrid") {
+
+      if (mode === "keyword") {
         if (!text.trim()) throw new Error("Enter a search query.");
         if (!connector.textSearch) throw new Error("This engine doesn't support text search.");
-        hits = await connector.textSearch(collection, { text: text.trim(), mode, limit });
+        hits = await connector.textSearch(collection, { text: text.trim(), mode: "keyword", limit });
+      } else if (mode === "hybrid") {
+        if (!text.trim()) throw new Error("Enter a search query.");
+        if (!connector.textSearch) throw new Error("This engine doesn't support text search.");
+        // Embedding key is optional here — without it, hybrid still runs as
+        // keyword-only; with it, the query genuinely blends keyword + vector.
+        const vector = apiKey.trim() ? await embedText("openai", apiKey.trim(), text.trim()) : undefined;
+        hits = await connector.textSearch(collection, { text: text.trim(), mode: "hybrid", limit, vector });
+      } else if (mode === "semantic") {
+        if (!text.trim()) throw new Error("Enter text to search for.");
+        const vector = await embedText("openai", apiKey.trim(), text.trim());
+        hits = await connector.vectorSearch(collection, { vector, limit });
       } else if (mode === "similar") {
         if (!recordId.trim()) throw new Error("Enter a record ID.");
         const rec = await connector.getRecord(collection, recordId.trim());
@@ -69,7 +99,8 @@ export function SearchView({ connector, collection, onChanged }: Props) {
       }
       setResults(hits);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof EmbeddingError ? err.message : err instanceof Error ? err.message : String(err);
+      setError(message);
       setResults(null);
     } finally {
       setBusy(false);
@@ -79,7 +110,7 @@ export function SearchView({ connector, collection, onChanged }: Props) {
   return (
     <div>
       <div className="toolbar">
-        <select className="select" style={{ width: 180 }} value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
+        <select className="select" style={{ width: 190 }} value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
           {modes.map((m) => (
             <option key={m} value={m}>
               {MODE_LABELS[m]}
@@ -87,7 +118,7 @@ export function SearchView({ connector, collection, onChanged }: Props) {
           ))}
         </select>
 
-        {(mode === "keyword" || mode === "hybrid") && (
+        {(mode === "keyword" || mode === "hybrid" || mode === "semantic") && (
           <input
             className="input"
             style={{ flex: 1, minWidth: 220 }}
@@ -133,14 +164,27 @@ export function SearchView({ connector, collection, onChanged }: Props) {
         </button>
       </div>
 
-      <div style={{ color: "var(--text-faint)", fontSize: 12.5, marginBottom: 14 }}>
+      {needsEmbedding && (
+        <div className="field" style={{ maxWidth: 420 }}>
+          <label>
+            OpenAI API key {embeddingRequired ? "(required — embeds your query text)" : "(optional — blends vector relevance in)"}
+          </label>
+          <input
+            className="input"
+            type="password"
+            placeholder="sk-…"
+            value={apiKey}
+            onChange={(e) => saveApiKey(e.target.value)}
+          />
+        </div>
+      )}
+
+      <div style={{ color: "var(--text-faint)", fontSize: 12.5, margin: "10px 0 14px" }}>
         {mode === "keyword" && "Full-text BM25 search over indexed properties."}
-        {mode === "hybrid" && "Blends keyword and vector relevance."}
+        {mode === "hybrid" && "Blends keyword and vector relevance. Add a key above for a true vector blend; without one, this runs as keyword-only."}
+        {mode === "semantic" && "Embeds your text client-side, then runs a nearest-neighbor vector search — works on any engine."}
         {mode === "similar" && "Finds the nearest neighbors of an existing record, using its stored vector."}
         {mode === "vector" && "Paste a raw query vector as a JSON array."}
-        {!caps.textSearch && (mode === "similar" || mode === "vector") && (
-          <> This engine needs a query vector — text search isn’t available here.</>
-        )}
       </div>
 
       {error && <div className="banner err">{error}</div>}
