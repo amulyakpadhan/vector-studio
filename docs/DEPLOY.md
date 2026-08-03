@@ -22,18 +22,6 @@ all the real work (connectors, UMAP, rendering) runs in the visitor's browser.
 No environment variables are required — the app has none (no server secrets,
 since all DB credentials live in the visitor's own browser).
 
-### Repo visibility on the Hobby plan
-
-Vercel's free Hobby plan only auto-deploys commits authored by the project
-owner **on private repos** — any other commit author (a bot, a co-author, a
-CI identity) gets the deploy blocked with "did not have contributing access."
-Making the repo **public** removes this restriction (Hobby has no such check
-for public repos), which is the right default anyway once the project is
-meant to be shared. If a deployment is still shown as blocked right after
-flipping visibility, it may be a stale evaluation from before the change —
-redeploy the same commit from the Vercel dashboard, or push a new commit, to
-force a fresh check.
-
 ## Why free tier is enough
 
 - `/` and `/studio` are static.
@@ -43,8 +31,7 @@ force a fresh check.
 - The expensive work — vector DB calls, UMAP projection, Three.js rendering —
   happens in the browser, never on the host.
 
-So bandwidth for a small static bundle is the only real cost, well within
-Vercel's free Hobby tier for a build-in-public launch.
+So bandwidth for a small static bundle is the only real cost.
 
 ## Custom domain
 
