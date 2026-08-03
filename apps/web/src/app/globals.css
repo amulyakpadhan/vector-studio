@@ -80,6 +80,25 @@ textarea {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  /* A faint, slowly drifting glow instead of a flat fill — continuity with
+     the landing page's field without running an actual WebGL canvas here.
+     Data screens should stay cheap and calm, so this is CSS-only. */
+  background: radial-gradient(ellipse 120% 60% at 50% -10%, rgba(31, 224, 196, 0.07), transparent 60%), var(--bg);
+  background-attachment: fixed;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .shell {
+    animation: shellGlow 16s ease-in-out infinite;
+  }
+}
+@keyframes shellGlow {
+  0%, 100% {
+    background-position: 50% 0%, 0 0;
+  }
+  50% {
+    background-position: 46% 4%, 0 0;
+  }
 }
 
 .topbar {
@@ -230,9 +249,9 @@ textarea {
   transition: border-color 0.15s, transform 0.1s, box-shadow 0.15s;
 }
 .card.link:hover {
-  border-color: var(--border-bright);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  border-color: var(--accent);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--accent-glow);
 }
 
 .card-top {
@@ -533,10 +552,45 @@ tbody tr:hover {
   text-align: center;
   padding: 70px 20px;
   color: var(--text-dim);
+  animation: fadeUp 0.6s cubic-bezier(0.2, 0.9, 0.25, 1) both;
 }
 .empty .big {
   font-size: 44px;
   margin-bottom: 12px;
+  display: inline-block;
+  animation: breathe 3s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%, 100% {
+    transform: scale(1);
+    text-shadow: 0 0 0 transparent;
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.08);
+    text-shadow: 0 0 22px var(--accent-glow);
+    opacity: 1;
+  }
+}
+
+/* Connection cards drop in staggered, using --i (set inline per card) for
+   the delay so the grid doesn't render as one flat block on first paint. */
+.card-in {
+  opacity: 0;
+  animation: fadeUp 0.5s cubic-bezier(0.2, 0.9, 0.25, 1) forwards;
+  animation-delay: calc(var(--i, 0) * 0.05s);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .empty,
+  .empty .big,
+  .card-in {
+    animation: none;
+    opacity: 1;
+  }
+  .shell {
+    animation: none;
+  }
 }
 .toolbar {
   display: flex;
