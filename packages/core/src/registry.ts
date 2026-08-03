@@ -3,16 +3,17 @@ import { QdrantConnector } from "./connectors/qdrant.ts";
 import { PineconeConnector } from "./connectors/pinecone.ts";
 import { WeaviateConnector } from "./connectors/weaviate.ts";
 import { ChromaConnector } from "./connectors/chroma.ts";
+import { MilvusConnector } from "./connectors/milvus.ts";
 import type { ConnectionConfig, DbEngine } from "./types.ts";
 
 type ConnectorFactory = (config: ConnectionConfig) => VectorConnector;
 
-const REGISTRY: Partial<Record<DbEngine, ConnectorFactory>> = {
+const REGISTRY: Record<DbEngine, ConnectorFactory> = {
   qdrant: (config) => new QdrantConnector(config),
   pinecone: (config) => new PineconeConnector(config),
   weaviate: (config) => new WeaviateConnector(config),
   chroma: (config) => new ChromaConnector(config),
-  // milvus → next
+  milvus: (config) => new MilvusConnector(config),
 };
 
 export function createConnector(config: ConnectionConfig): VectorConnector {

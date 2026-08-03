@@ -62,7 +62,7 @@ as Compass, TablePlus, and Postman.
 | **Pinecone** | ✅ | ✅ | ✅ | ✅ |
 | **Weaviate** | ✅ | ✅ | ✅ (+ keyword/hybrid) | ✅ |
 | **Chroma** | ✅ | ✅ | ✅ | ✅ |
-| Milvus | 🔜 | 🔜 | 🔜 | 🔜 |
+| **Milvus** | ✅ | ✅ | ✅ | ✅ |
 
 Adding an engine means implementing one `VectorConnector` interface — the entire UI
 and the visualization work against it for free.
@@ -131,7 +131,7 @@ pnpm build         # build everything
 - [x] Landing page
 - [x] Weaviate connector (REST + GraphQL search)
 - [x] Chroma connector
-- [ ] Milvus connector
+- [x] Milvus connector
 - [ ] Desktop app (Tauri)
 - [ ] Team features (shared connections, cross-DB migration)
 

@@ -37,7 +37,7 @@ const ENGINES: EngineDef[] = [
     urlHint: "Leave blank — Vyn discovers your indexes from the API key.",
   },
   { value: "weaviate", label: "Weaviate", ready: true, placeholder: "https://xxxx.weaviate.network", needsUrl: true, needsKey: false },
-  { value: "milvus", label: "Milvus (soon)", ready: false, placeholder: "http://localhost:19530", needsUrl: true, needsKey: false },
+  { value: "milvus", label: "Milvus", ready: true, placeholder: "http://localhost:19530", needsUrl: true, needsKey: false },
   { value: "chroma", label: "Chroma", ready: true, placeholder: "http://localhost:8000", needsUrl: true, needsKey: false },
 ];
 

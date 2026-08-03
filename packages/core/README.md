@@ -34,7 +34,7 @@ instead of pretending they're all identical.
 | Qdrant | REST | ✅ |
 | Pinecone | REST (control + data plane) | ✅ |
 | Weaviate | REST + GraphQL | ✅ |
-| Milvus | REST v2 | 🔜 |
+| Milvus | REST v2 | ✅ |
 | Chroma | REST (v2, falls back to v1) | ✅ |
 
 ## Notes

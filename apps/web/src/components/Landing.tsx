@@ -4,8 +4,22 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { GITHUB_URL } from "@/lib/links";
 
-/** Split a line into per-character spans so it can assemble letter by letter,
- * like values snapping into place. Spaces stay unwrapped so words can wrap.
+/** Deterministic pseudo-random in [0,1) from a string seed. Using Math.random
+ * here would produce different values on the server and the client and trip
+ * a hydration mismatch, so the scatter is derived from the text instead. */
+function seeded(seed: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 10000) / 10000;
+}
+
+/** Split a line into per-character spans so it can assemble letter by letter.
+ * Each character starts flung out along its own angle — as though it were one
+ * more point in the field behind it — and converges into place. Spaces stay
+ * unwrapped so words can still wrap.
  *
  * `gradient` paints the brand ramp across the whole phrase: background-clip
  * on a wrapper can't work once the text lives in child spans (the wrapper has
@@ -40,11 +54,25 @@ function ScatterText({
                   backgroundPosition: `${total > 1 ? (i / (total - 1)) * 100 : 0}% 0`,
                 }
               : undefined;
+            // Scatter origin: an angle and distance unique to this character,
+            // so the letters gather in from all directions rather than sliding
+            // up in unison.
+            const angle = seeded(`${text}-a-${i}`) * Math.PI * 2;
+            const spread = 34 + seeded(`${text}-d-${i}`) * 46;
+            const spin = (seeded(`${text}-r-${i}`) - 0.5) * 34;
             return (
               <span
                 key={`${ch}-${c}`}
                 className={`lp-char${gradient ? " lp-char-grad" : ""}`}
-                style={{ animationDelay: `${delay + i * stagger}s`, ...gradientStyle }}
+                style={
+                  {
+                    animationDelay: `${delay + i * stagger}s`,
+                    "--dx": `${(Math.cos(angle) * spread).toFixed(1)}px`,
+                    "--dy": `${(Math.sin(angle) * spread).toFixed(1)}px`,
+                    "--rot": `${spin.toFixed(1)}deg`,
+                    ...gradientStyle,
+                  } as React.CSSProperties
+                }
               >
                 {ch}
               </span>
@@ -57,9 +85,10 @@ function ScatterText({
   );
 }
 
-/** Reveals its children once they scroll into view. Character animations
- * inside start paused (see .lp-reveal .lp-char) and run on reveal, so a
- * heading assembles as it enters the viewport rather than on page load. */
+/** Plays its children's entrance every time it scrolls into view, in either
+ * direction. Text inside carries no animation until `is-visible` lands, and
+ * dropping the class removes the animation entirely — so the letters scatter
+ * back out and re-gather on the next pass, rather than resuming mid-flight. */
 function Reveal({ children, className }: { children: React.ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -73,10 +102,7 @@ function Reveal({ children, className }: { children: React.ReactNode; className?
     const io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting) {
-            el.classList.add("is-visible");
-            io.unobserve(el); // reveal once, don't re-hide on scroll back
-          }
+          el.classList.toggle("is-visible", entry.isIntersecting);
         }
       },
       { threshold: 0.25 },

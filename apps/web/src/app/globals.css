@@ -724,7 +724,8 @@ tbody tr:hover {
 .lp-char {
   display: inline-block;
   opacity: 0;
-  animation: charIn 0.75s cubic-bezier(0.2, 0.9, 0.25, 1) forwards;
+  /* --dx/--dy/--rot come from the component: each letter's own launch vector. */
+  animation: charIn 0.85s cubic-bezier(0.16, 0.9, 0.25, 1) forwards;
   will-change: transform, opacity, filter;
 }
 /* Each character clips its own slice of the brand ramp; the inline
@@ -738,13 +739,18 @@ tbody tr:hover {
   -webkit-text-fill-color: transparent;
   color: transparent;
 }
+/* Each letter starts out where a particle would be — flung along its own
+   vector, small, spun and blurred — then converges onto the baseline. */
 @keyframes charIn {
   0% {
     opacity: 0;
-    transform: translateY(0.42em) scale(0.86);
-    filter: blur(9px);
+    transform: translate(var(--dx, 0), var(--dy, 0.42em)) rotate(var(--rot, 0deg)) scale(0.55);
+    filter: blur(10px);
   }
-  60% {
+  55% {
+    opacity: 1;
+  }
+  70% {
     filter: blur(0);
   }
   100% {
@@ -787,16 +793,20 @@ tbody tr:hover {
   opacity: 1;
   transform: none;
 }
-/* Text animations inside a reveal hold at their first frame until the block
-   scrolls into view, so headings assemble on arrival rather than having
-   already played while off-screen. Delays resume from the unpause. */
+/* Text inside a reveal carries no animation until the block is on screen.
+   Removing the animation (rather than pausing it) means leaving the viewport
+   returns the letters to their scattered start, so the next pass replays the
+   whole convergence instead of resuming halfway through. */
 .lp-reveal .lp-char,
 .lp-reveal .lp-fade {
-  animation-play-state: paused;
+  animation: none;
+  opacity: 0;
 }
-.lp-reveal.is-visible .lp-char,
+.lp-reveal.is-visible .lp-char {
+  animation: charIn 0.85s cubic-bezier(0.16, 0.9, 0.25, 1) forwards;
+}
 .lp-reveal.is-visible .lp-fade {
-  animation-play-state: running;
+  animation: fadeUp 0.85s cubic-bezier(0.2, 0.9, 0.25, 1) forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
