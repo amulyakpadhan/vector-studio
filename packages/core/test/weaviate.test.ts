@@ -109,10 +109,14 @@ test("vectorSearch builds a GraphQL nearVector query and normalizes distance→s
   // the GraphQL body should carry the vector as a variable
   const gqlCall = calls.find((c) => c.path === "/v1/graphql")!;
   assert.deepEqual((gqlCall.body as any).variables.vec, [0.1, 0.2]);
+  // nearVector can report `distance` but never `score` — asking for a field
+  // the query type can't produce is what triggers Weaviate's server-side
+  // "interface conversion" panic on bm25/hybrid queries.
+  assert.match((gqlCall.body as any).query, /_additional\s*\{\s*id\s+distance\s*\}/);
 });
 
-test("textSearch bm25 reads _additional.score", async () => {
-  stubFetch((method, path) => {
+test("textSearch bm25 reads _additional.score and never requests distance", async () => {
+  const calls = stubFetch((method, path) => {
     if (path === "/v1/schema/Docs") return DOCS_CLASS;
     if (path === "/v1/graphql") {
       return { data: { Get: { Docs: [{ title: "hi", _additional: { id: "x", score: "1.7" } }] } } };
@@ -122,6 +126,9 @@ test("textSearch bm25 reads _additional.score", async () => {
   const hits = await conn().textSearch("Docs", { text: "hello", mode: "keyword", limit: 3 });
   assert.equal(hits[0]!.id, "x");
   assert.ok(Math.abs(hits[0]!.score - 1.7) < 1e-9);
+  const gqlCall = calls.find((c) => c.path === "/v1/graphql")!;
+  assert.match((gqlCall.body as any).query, /_additional\s*\{\s*id\s+score\s*\}/);
+  assert.doesNotMatch((gqlCall.body as any).query, /distance/);
 });
 
 test("GraphQL errors surface as ConnectorError", async () => {

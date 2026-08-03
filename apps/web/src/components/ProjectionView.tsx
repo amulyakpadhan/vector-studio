@@ -104,7 +104,10 @@ export function ProjectionView({ connector, collection }: Props) {
       sampleRef.current = sample;
 
       if (sample.vectors.length === 0) {
-        setPhase({ kind: "error", message: "No stored vectors found to project." });
+        setPhase({
+          kind: "error",
+          message: "No stored vectors found in this collection — it may be keyword-only data with no embeddings attached.",
+        });
         return;
       }
 

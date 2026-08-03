@@ -102,6 +102,9 @@ export class WeaviateConnector implements VectorConnector {
       baseUrl: config.url,
       headers: config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : undefined,
       bridgeUrl: typeof config.options?.["bridgeUrl"] === "string" ? config.options["bridgeUrl"] : undefined,
+      // Vector exports for projection can be large (1500 records × high-dim
+      // vectors); the default 30s timeout is too tight for that one request.
+      timeoutMs: 60_000,
     });
   }
 
@@ -247,7 +250,9 @@ export class WeaviateConnector implements VectorConnector {
 
   async vectorSearch(collection: string, query: VectorQuery): Promise<SearchResult[]> {
     const meta = await this.classMeta(collection);
-    const fields = this.selectionFields(meta.properties, query.withVectors ?? false);
+    // Only nearVector queries can compute `distance` — asking for it on a
+    // keyword-only query has no vector to measure and Weaviate errors.
+    const fields = this.selectionFields(meta.properties, "distance", query.withVectors ?? false);
     const gql = `query Search($vec: [Float!], $limit: Int) {
       Get { ${collection}(nearVector: { vector: $vec }, limit: $limit) { ${fields} } }
     }`;
@@ -257,7 +262,8 @@ export class WeaviateConnector implements VectorConnector {
 
   async textSearch(collection: string, query: TextQuery): Promise<SearchResult[]> {
     const meta = await this.classMeta(collection);
-    const fields = this.selectionFields(meta.properties, false);
+    // bm25/hybrid report `score`, not `distance` — same reasoning as above.
+    const fields = this.selectionFields(meta.properties, "score", false);
     const operator = query.mode === "hybrid" ? "hybrid" : "bm25";
     const gql = `query Search($q: String!, $limit: Int) {
       Get { ${collection}(${operator}: { query: $q }, limit: $limit) { ${fields} } }
@@ -295,9 +301,11 @@ export class WeaviateConnector implements VectorConnector {
     return this.metaCache.get(collection)!;
   }
 
-  /** GraphQL field selection: the payload props + the _additional block. */
-  private selectionFields(properties: string[], withVector: boolean): string {
-    const extra = ["id", "distance", "score", ...(withVector ? ["vector"] : [])].join(" ");
+  /** GraphQL field selection: the payload props + the _additional block.
+   * `scoreField` must match what the query type can actually produce —
+   * requesting the wrong one causes a server-side error (see callers). */
+  private selectionFields(properties: string[], scoreField: "distance" | "score", withVector: boolean): string {
+    const extra = ["id", scoreField, ...(withVector ? ["vector"] : [])].join(" ");
     return `${properties.join(" ")} _additional { ${extra} }`;
   }
 
