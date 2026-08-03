@@ -9,8 +9,8 @@ interface Ripple {
 const RIPPLE_LIFE = 2.2; // seconds
 const RIPPLE_SPEED = 55; // world units/sec the wavefront travels
 const RIPPLE_BAND = 20; // thickness of the shockwave shell
-const POINTER_RADIUS = 30; // radius around the cursor ray that reacts
-const POINTER_PUSH = 15; // how far particles are shoved off the ray
+const POINTER_RADIUS = 17; // radius around the cursor ray that reacts
+const POINTER_PUSH = 7; // how far particles are shoved off the ray
 
 /**
  * The landing-page particle field.

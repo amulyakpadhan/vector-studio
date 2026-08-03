@@ -35,7 +35,7 @@ instead of pretending they're all identical.
 | Pinecone | REST (control + data plane) | ✅ |
 | Weaviate | REST + GraphQL | ✅ |
 | Milvus | REST v2 | 🔜 |
-| Chroma | REST | 🔜 |
+| Chroma | REST (v2, falls back to v1) | ✅ |
 
 ## Notes
 

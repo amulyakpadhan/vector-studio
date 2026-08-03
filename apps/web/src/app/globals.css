@@ -699,6 +699,20 @@ tbody tr:hover {
   50% { transform: translateY(6px); opacity: 1; }
 }
 
+/* Visible to screen readers only — used to carry the real string for text
+   that's been split into per-character spans for animation. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ── entrance animations ─────────────────────────────────── */
 
 /* Characters converge into place out of a scattered blur, like values
@@ -772,6 +786,17 @@ tbody tr:hover {
 .lp-reveal.is-visible {
   opacity: 1;
   transform: none;
+}
+/* Text animations inside a reveal hold at their first frame until the block
+   scrolls into view, so headings assemble on arrival rather than having
+   already played while off-screen. Delays resume from the unpause. */
+.lp-reveal .lp-char,
+.lp-reveal .lp-fade {
+  animation-play-state: paused;
+}
+.lp-reveal.is-visible .lp-char,
+.lp-reveal.is-visible .lp-fade {
+  animation-play-state: running;
 }
 
 @media (prefers-reduced-motion: reduce) {
