@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { ConnectionConfig, DbEngine } from "@vyn/core";
+import type { ConnectionConfig, DbEngine, Json } from "@vyn/core";
 
 /**
  * A saved connection as the user sees it. This is what lives in the browser
@@ -21,16 +21,20 @@ export interface SavedConnection {
    * search on collections with no server-side vectorizer). Sent only to
    * the embedding provider's API, never to any server of ours. */
   embeddingApiKey?: string;
+  /** Engine-specific settings: namespace (Pinecone), tenant/database (Chroma), dbName/primaryField/vectorField (Milvus). */
+  options?: Record<string, Json>;
   createdAt: number;
 }
 
 /** Turn a saved connection into the config @vyn/core expects. */
 export function toConfig(c: SavedConnection): ConnectionConfig {
+  const options: Record<string, Json> = { ...(c.options ?? {}) };
+  if (c.bridgeUrl) options.bridgeUrl = c.bridgeUrl;
   return {
     engine: c.engine,
     url: c.url,
     apiKey: c.apiKey || undefined,
-    options: c.bridgeUrl ? { bridgeUrl: c.bridgeUrl } : undefined,
+    options: Object.keys(options).length ? options : undefined,
   };
 }
 

@@ -10,7 +10,7 @@ import { toConfig, type SavedConnection } from "./store";
 const cache = new Map<string, VectorConnector>();
 
 function signature(c: SavedConnection): string {
-  return [c.id, c.engine, c.url, c.apiKey ?? "", c.bridgeUrl ?? ""].join("|");
+  return [c.id, c.engine, c.url, c.apiKey ?? "", c.bridgeUrl ?? "", JSON.stringify(c.options ?? {})].join("|");
 }
 
 export function connectorFor(c: SavedConnection): VectorConnector {

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import type { VectorConnector, VectorRecord } from "@vyn/core";
+import { useEscape, copyToClipboard } from "@/lib/useEscape";
+import { toast } from "@/lib/toast";
 
 interface Props {
   record: VectorRecord;
@@ -16,6 +18,12 @@ export function RecordDrawer({ record, collection, connector, onClose, onChanged
   const [draft, setDraft] = useState(() => JSON.stringify(record.payload, null, 2));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEscape(onClose);
+
+  async function copy(text: string, label: string) {
+    if (await copyToClipboard(text)) toast.success(`${label} copied`);
+    else toast.error("Copy failed");
+  }
 
   async function save() {
     let parsed: Record<string, unknown>;
@@ -62,6 +70,20 @@ export function RecordDrawer({ record, collection, connector, onClose, onChanged
         </div>
 
         {error && <div className="banner err">{error}</div>}
+
+        <div className="toolbar" style={{ marginBottom: 12, gap: 6 }}>
+          <button className="btn ghost sm" onClick={() => copy(String(record.id), "ID")}>
+            ⧉ Copy ID
+          </button>
+          <button className="btn ghost sm" onClick={() => copy(JSON.stringify(record, null, 2), "Record JSON")}>
+            ⧉ Copy JSON
+          </button>
+          {record.vector && (
+            <button className="btn ghost sm" onClick={() => copy(JSON.stringify(record.vector), "Vector")}>
+              ⧉ Copy vector
+            </button>
+          )}
+        </div>
 
         <div className="field">
           <label>Payload {editing ? "(editing)" : ""}</label>

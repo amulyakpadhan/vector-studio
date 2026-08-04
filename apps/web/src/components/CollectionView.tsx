@@ -11,6 +11,8 @@ import { SearchView } from "./SearchView";
 import { FilterBar } from "./FilterBar";
 import { AddRecordModal } from "./AddRecordModal";
 import { ImportModal } from "./ImportModal";
+import { StatsBar } from "./StatsBar";
+import { toast } from "@/lib/toast";
 
 interface Props {
   connector: VectorConnector;
@@ -36,7 +38,6 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
   const [exporting, setExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
-  const [banner, setBanner] = useState<string | null>(null);
 
   const conn = useConnections((s) => s.get(connectionId));
   const caps = connector.capabilities();
@@ -45,6 +46,11 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
   const schema = useQuery({
     queryKey: ["schema", connectionId, collection],
     queryFn: () => connector.getSchema(collection),
+  });
+
+  const stats = useQuery({
+    queryKey: ["stats", connectionId, collection],
+    queryFn: () => connector.getStats(collection),
   });
 
   const filterKey = browseFilter ? JSON.stringify(browseFilter) : "none";
@@ -94,6 +100,7 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
     setSelected(new Set());
     qc.invalidateQueries({ queryKey: ["records", connectionId, collection] });
     qc.invalidateQueries({ queryKey: ["schema", connectionId, collection] });
+    qc.invalidateQueries({ queryKey: ["stats", connectionId, collection] });
   }
 
   function toggleRow(id: string) {
@@ -124,10 +131,10 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
     setBulkBusy(true);
     try {
       await connector.deleteRecords(collection, ids);
-      setBanner(`Deleted ${ids.length} record${ids.length === 1 ? "" : "s"}.`);
+      toast.success(`Deleted ${ids.length} record${ids.length === 1 ? "" : "s"}.`);
       refresh();
     } catch (err) {
-      setBanner(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setBulkBusy(false);
     }
@@ -138,9 +145,9 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
     setExporting(true);
     try {
       const n = await exportCollection(connector, collection, format, withVectors);
-      setBanner(`Exported ${n} record${n === 1 ? "" : "s"} as ${format.toUpperCase()}.`);
+      toast.success(`Exported ${n} record${n === 1 ? "" : "s"} as ${format.toUpperCase()}.`);
     } catch (err) {
-      setBanner(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setExporting(false);
     }
@@ -156,9 +163,8 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
       <div className="section-head" style={{ marginTop: 0 }}>
         <div>
           <h1 className="page-title">{collection}</h1>
-          <p className="page-sub" style={{ fontFamily: "var(--mono)", fontSize: 12.5 }}>
-            {dim != null ? `${dim} dims` : "— dims"} · {metric ?? "—"}
-            {schema.data?.fields.length ? ` · ${schema.data.fields.length} indexed fields` : ""}
+          <p className="page-sub" style={{ fontSize: 13 }}>
+            Browse, search, and visualize this collection.
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -170,6 +176,15 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
           </button>
         </div>
       </div>
+
+      <StatsBar
+        engine={conn?.engine}
+        count={stats.data?.count ?? records.data?.total}
+        dimension={dim}
+        metric={metric}
+        indexedFields={schema.data?.fields.length}
+        loading={schema.isLoading && stats.isLoading}
+      />
 
       <div className="tabs">
         <button className={`tab ${tab === "data" ? "active" : ""}`} onClick={() => setTab("data")}>
@@ -190,14 +205,6 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
       ) : (
         <>
       {records.isError && <div className="banner err">{(records.error as Error).message}</div>}
-      {banner && (
-        <div className="banner" style={{ display: "flex", alignItems: "center" }}>
-          <span>{banner}</span>
-          <button className="btn ghost sm" style={{ marginLeft: "auto" }} onClick={() => setBanner(null)}>
-            ✕
-          </button>
-        </div>
-      )}
 
       <div className="toolbar" style={{ marginBottom: 12, gap: 8 }}>
         <button className="btn sm primary" onClick={() => setShowAdd(true)}>
@@ -342,7 +349,7 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
           onClose={() => setShowAdd(false)}
           onAdded={() => {
             setShowAdd(false);
-            setBanner("Record added.");
+            toast.success("Record added.");
             refresh();
           }}
         />
@@ -357,7 +364,7 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
           onClose={() => setShowImport(false)}
           onImported={() => {
             setShowImport(false);
-            setBanner("Import complete.");
+            toast.success("Import complete.");
             refresh();
           }}
         />

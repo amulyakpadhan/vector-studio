@@ -9,6 +9,7 @@ import { EngineBadge } from "./EngineBadge";
 export function Dashboard() {
   const connections = useConnections((s) => s.connections);
   const remove = useConnections((s) => s.remove);
+  const add = useConnections((s) => s.add);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<SavedConnection | undefined>();
   const [hydrated, setHydrated] = useState(false);
@@ -65,6 +66,16 @@ export function Dashboard() {
                     onClick={() => { setEditing(c); setShowForm(true); }}
                   >
                     Edit
+                  </button>
+                  <button
+                    className="btn ghost sm"
+                    title="Duplicate this connection"
+                    onClick={() => {
+                      const { id: _id, createdAt: _c, ...rest } = c;
+                      add({ ...rest, name: `${c.name} (copy)` });
+                    }}
+                  >
+                    Duplicate
                   </button>
                   <button
                     className="btn ghost sm danger"
