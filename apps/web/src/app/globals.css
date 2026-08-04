@@ -1043,3 +1043,23 @@ tbody tr:hover {
     font-size: 15px;
   }
 }
+
+/* filter builder */
+.filter-bar {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.filter-row {
+  display: grid;
+  grid-template-columns: 1fr 150px 1fr auto;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.filter-active {
+  color: var(--accent-bright);
+  font-size: 12px;
+  margin-left: auto;
+}

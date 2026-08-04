@@ -111,6 +111,7 @@ export class ChromaConnector implements VectorConnector {
       textSearch: false,
       hybridSearch: false,
       payloadFilters: true, // `where` on metadata
+      filterBrowse: true, // /get accepts a where filter
       browse: true,
       exportVectors: true,
       createCollection: true,
@@ -219,6 +220,7 @@ export class ChromaConnector implements VectorConnector {
     const res = await this.http.post<ChromaGetResult>(`${base}/${id}/get`, {
       limit: opts.limit,
       offset,
+      where: opts.filter ?? undefined,
       include,
     });
     const items = this.toRecords(res);

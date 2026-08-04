@@ -86,6 +86,8 @@ export interface PageOpts {
   /** Opaque cursor from the previous page; engines differ (offset vs. cursor). */
   cursor?: string;
   withVectors?: boolean;
+  /** Engine-native filter object (from buildFilter). Only applied when the engine can browse-filter. */
+  filter?: Json;
 }
 
 export interface Page<T> {
@@ -117,6 +119,8 @@ export interface TextQuery {
   /** Pre-computed query embedding — lets hybrid genuinely blend keyword +
    * vector relevance even on collections with no server-side vectorizer. */
   vector?: number[];
+  /** Hybrid-only: 0 = pure keyword, 1 = pure vector. Engines that don't support tuning ignore it. */
+  alpha?: number;
 }
 
 export interface SearchResult {
@@ -144,7 +148,10 @@ export interface ConnectorCapabilities {
   engine: DbEngine;
   textSearch: boolean;
   hybridSearch: boolean;
+  /** Can filter searches by payload/metadata. */
   payloadFilters: boolean;
+  /** Can filter the browse/scroll listing (not just search). */
+  filterBrowse: boolean;
   /** Can list records without a query vector (browse/scroll). */
   browse: boolean;
   /** Can fetch stored vectors back out (needed for projection). */

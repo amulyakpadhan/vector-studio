@@ -141,6 +141,7 @@ export class MilvusConnector implements VectorConnector {
       textSearch: false, // full-text needs a BM25 function on the collection
       hybridSearch: false,
       payloadFilters: true, // boolean filter expressions
+      filterBrowse: true, // query accepts a filter expression
       browse: true,
       exportVectors: true,
       createCollection: true,
@@ -228,9 +229,10 @@ export class MilvusConnector implements VectorConnector {
 
     const rows = await this.call<Record<string, Json>[]>("/v2/vectordb/entities/query", {
       collectionName: collection,
-      // Milvus has no "match everything" query, so the primary key stands in
-      // for one: every row has a key, so this selects all of them.
-      filter: this.matchAllFilter(meta),
+      // A user filter expression when present; otherwise Milvus has no "match
+      // everything" query, so the primary key stands in for one (every row has
+      // a key, so this selects all of them).
+      filter: typeof opts.filter === "string" && opts.filter ? opts.filter : this.matchAllFilter(meta),
       outputFields,
       limit: opts.limit,
       offset,

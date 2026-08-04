@@ -147,7 +147,7 @@ test("textSearch hybrid with a supplied vector blends keyword + vector", async (
   });
   assert.equal(hits[0]!.id, "x");
   const gqlCall = calls.find((c) => c.path === "/v1/graphql")!;
-  assert.match((gqlCall.body as any).query, /hybrid:\s*\{\s*query:\s*\$q,\s*vector:\s*\$vec\s*\}/);
+  assert.match((gqlCall.body as any).query, /hybrid:\s*\{\s*query:\s*\$q,\s*vector:\s*\$vec,\s*alpha:\s*[\d.]+\s*\}/);
   assert.deepEqual((gqlCall.body as any).variables.vec, [0.1, 0.2]);
 });
 

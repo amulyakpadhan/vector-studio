@@ -96,6 +96,7 @@ export class PineconeConnector implements VectorConnector {
   private readonly control: HttpClient;
   private readonly bridgeUrl?: string;
   private readonly apiKey?: string;
+  private readonly namespace?: string;
   /** index name → data-plane client (hosts are discovered from the control plane). */
   private readonly dataClients = new Map<string, HttpClient>();
   /** cached index descriptors from the last list/describe. */
@@ -105,6 +106,7 @@ export class PineconeConnector implements VectorConnector {
     this.config = config;
     this.apiKey = config.apiKey;
     this.bridgeUrl = typeof config.options?.["bridgeUrl"] === "string" ? config.options["bridgeUrl"] : undefined;
+    this.namespace = typeof config.options?.["namespace"] === "string" && config.options["namespace"] ? config.options["namespace"] : undefined;
     // config.url is optional for Pinecone; the control plane host is fixed.
     this.control = new HttpClient("pinecone", {
       baseUrl: config.url?.trim() || CONTROL_PLANE,
@@ -125,6 +127,7 @@ export class PineconeConnector implements VectorConnector {
       textSearch: false, // sparse/hybrid is advanced; revisit later
       hybridSearch: false,
       payloadFilters: true, // metadata filters on query
+      filterBrowse: false, // /vectors/list has no metadata filter — search only
       browse: true, // via list + fetch (serverless indexes)
       exportVectors: true,
       createCollection: true,
@@ -210,6 +213,7 @@ export class PineconeConnector implements VectorConnector {
     const data = await this.dataClient(collection);
     const q = new URLSearchParams({ limit: String(opts.limit) });
     if (opts.cursor) q.set("paginationToken", opts.cursor);
+    if (this.namespace) q.set("namespace", this.namespace);
     const listed = await data.get<PineconeListResult>(`/vectors/list?${q.toString()}`);
     const ids = listed.vectors.map((v) => v.id);
     const items = ids.length ? await this.fetchByIds(collection, ids) : [];
@@ -230,18 +234,19 @@ export class PineconeConnector implements VectorConnector {
         values: r.vector ?? [],
         metadata: r.payload,
       })),
+      ...this.ns(),
     });
     return { upserted: res.upsertedCount ?? records.length };
   }
 
   async updatePayload(collection: string, id: string | number, payload: Record<string, unknown>): Promise<void> {
     const data = await this.dataClient(collection);
-    await data.post("/update", { id: String(id), setMetadata: payload });
+    await data.post("/update", { id: String(id), setMetadata: payload, ...this.ns() });
   }
 
   async deleteRecords(collection: string, ids: (string | number)[]): Promise<void> {
     const data = await this.dataClient(collection);
-    await data.post("/vectors/delete", { ids: ids.map(String) });
+    await data.post("/vectors/delete", { ids: ids.map(String), ...this.ns() });
   }
 
   async vectorSearch(collection: string, query: VectorQuery): Promise<SearchResult[]> {
@@ -252,6 +257,7 @@ export class PineconeConnector implements VectorConnector {
       filter: query.filter,
       includeMetadata: true,
       includeValues: query.withVectors ?? false,
+      ...this.ns(),
     });
     return res.matches.map((m) => ({
       id: m.id,
@@ -299,10 +305,16 @@ export class PineconeConnector implements VectorConnector {
     return data.post<PineconeStats>("/describe_index_stats", {});
   }
 
+  /** Namespace body fragment, spread into POST payloads when one is configured. */
+  private ns(): { namespace?: string } {
+    return this.namespace ? { namespace: this.namespace } : {};
+  }
+
   private async fetchByIds(collection: string, ids: string[]): Promise<VectorRecord[]> {
     const data = await this.dataClient(collection);
     const q = new URLSearchParams();
     for (const id of ids) q.append("ids", id);
+    if (this.namespace) q.set("namespace", this.namespace);
     const res = await data.get<PineconeFetchResult>(`/vectors/fetch?${q.toString()}`);
     return Object.values(res.vectors).map((v) => ({
       id: v.id,

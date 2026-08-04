@@ -6,6 +6,7 @@ import type { Json, VectorConnector, VectorRecord } from "@vyn/core";
 import { RecordDrawer } from "./RecordDrawer";
 import { ProjectionView } from "./ProjectionView";
 import { SearchView } from "./SearchView";
+import { FilterBar } from "./FilterBar";
 
 interface Props {
   connector: VectorConnector;
@@ -23,7 +24,10 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
   const [cursorStack, setCursorStack] = useState<(string | undefined)[]>([undefined]);
   const [pageIndex, setPageIndex] = useState(0);
   const [inspect, setInspect] = useState<VectorRecord | null>(null);
+  const [showFilter, setShowFilter] = useState(false);
+  const [browseFilter, setBrowseFilter] = useState<Json | undefined>(undefined);
 
+  const caps = connector.capabilities();
   const cursor = cursorStack[pageIndex];
 
   const schema = useQuery({
@@ -31,9 +35,10 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
     queryFn: () => connector.getSchema(collection),
   });
 
+  const filterKey = browseFilter ? JSON.stringify(browseFilter) : "none";
   const records = useQuery({
-    queryKey: ["records", connectionId, collection, cursor ?? "start"],
-    queryFn: () => connector.listRecords(collection, { limit: PAGE_SIZE, cursor }),
+    queryKey: ["records", connectionId, collection, cursor ?? "start", filterKey],
+    queryFn: () => connector.listRecords(collection, { limit: PAGE_SIZE, cursor, filter: browseFilter }),
   });
 
   // Union of payload keys across the visible page → table columns.
@@ -58,6 +63,12 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
 
   function prevPage() {
     if (pageIndex > 0) setPageIndex((i) => i - 1);
+  }
+
+  function applyBrowseFilter(f: Json | undefined) {
+    setBrowseFilter(f);
+    setCursorStack([undefined]);
+    setPageIndex(0);
   }
 
   async function deleteCollection() {
@@ -113,6 +124,21 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
       ) : (
         <>
       {records.isError && <div className="banner err">{(records.error as Error).message}</div>}
+
+      {caps.filterBrowse && (
+        <div className="toolbar" style={{ marginBottom: 12 }}>
+          <button className={`btn sm ${browseFilter ? "primary" : ""}`} onClick={() => setShowFilter((v) => !v)}>
+            ⛃ Filter{browseFilter ? " ●" : ""}
+          </button>
+        </div>
+      )}
+      {caps.filterBrowse && showFilter && (
+        <FilterBar
+          engine={caps.engine}
+          fields={schema.data?.fields.map((f) => f.name)}
+          onApply={applyBrowseFilter}
+        />
+      )}
 
       <div className="table-wrap">
         <table>
