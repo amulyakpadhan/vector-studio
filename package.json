@@ -4,11 +4,13 @@
   "version": "0.1.0",
   "description": "The universal studio for vector databases — connect, browse, search, and visualize any vector DB.",
   "scripts": {
-    "build": "turbo run build",
-    "typecheck": "turbo run typecheck",
+    "build": "turbo run build --filter=!@vyn/desktop",
+    "typecheck": "turbo run typecheck --filter=!@vyn/desktop",
     "test": "turbo run test",
-    "dev": "turbo run dev",
-    "bridge": "pnpm --filter @vyn/bridge start"
+    "dev": "turbo run dev --filter=!@vyn/desktop",
+    "bridge": "pnpm --filter @vyn/bridge start",
+    "desktop": "pnpm --filter @vyn/desktop dev",
+    "desktop:build": "pnpm --filter @vyn/desktop build"
   },
   "devDependencies": {
     "turbo": "^2.5.0",

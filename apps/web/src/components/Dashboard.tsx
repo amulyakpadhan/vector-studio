@@ -41,7 +41,7 @@ export function Dashboard() {
         <div className="grid">
           {connections.map((c, i) => (
             <div key={c.id} className="card link card-in" style={{ "--i": i } as React.CSSProperties}>
-              <Link href={`/studio/${c.id}`}>
+              <Link href={`/studio/view?id=${c.id}`}>
                 <div className="card-top">
                   <div>
                     <div className="card-name">{c.name}</div>
@@ -56,7 +56,7 @@ export function Dashboard() {
                 </div>
               </Link>
               <div className="card-foot">
-                <Link href={`/studio/${c.id}`} className="btn sm">
+                <Link href={`/studio/view?id=${c.id}`} className="btn sm">
                   Open →
                 </Link>
                 <div style={{ display: "flex", gap: 4 }}>

@@ -1,0 +1,15 @@
+{
+  "name": "@vyn/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop shell (Tauri) wrapping the studio's static export.",
+  "scripts": {
+    "export": "cd ../web && BUILD_TARGET=export pnpm build",
+    "dev": "pnpm export && tauri dev",
+    "build": "pnpm export && tauri build",
+    "typecheck": "echo 'no TS to check — Rust side only'"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.0"
+  }
+}
