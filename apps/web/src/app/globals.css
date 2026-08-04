@@ -1063,3 +1063,36 @@ tbody tr:hover {
   font-size: 12px;
   margin-left: auto;
 }
+
+/* record table: selection + export menu */
+.row-selected {
+  background: var(--accent-glow) !important;
+}
+.export-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 180px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius);
+  padding: 5px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+.export-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.export-item:hover {
+  background: var(--bg-elev);
+  color: var(--accent-bright);
+}

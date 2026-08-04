@@ -15,3 +15,10 @@ export {
   type FilterCondition,
   type FilterSpec,
 } from "./filter.ts";
+export {
+  serializeRecords,
+  parseRecords,
+  formatFromFilename,
+  type RecordFormat,
+  type SerializeOpts,
+} from "./io.ts";

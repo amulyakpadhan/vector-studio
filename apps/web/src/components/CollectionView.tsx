@@ -2,11 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Json, VectorConnector, VectorRecord } from "@vyn/core";
+import type { Json, RecordFormat, VectorConnector, VectorRecord } from "@vyn/core";
+import { useConnections } from "@/lib/store";
+import { exportCollection } from "@/lib/exportRecords";
 import { RecordDrawer } from "./RecordDrawer";
 import { ProjectionView } from "./ProjectionView";
 import { SearchView } from "./SearchView";
 import { FilterBar } from "./FilterBar";
+import { AddRecordModal } from "./AddRecordModal";
+import { ImportModal } from "./ImportModal";
 
 interface Props {
   connector: VectorConnector;
@@ -26,7 +30,15 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
   const [inspect, setInspect] = useState<VectorRecord | null>(null);
   const [showFilter, setShowFilter] = useState(false);
   const [browseFilter, setBrowseFilter] = useState<Json | undefined>(undefined);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [banner, setBanner] = useState<string | null>(null);
 
+  const conn = useConnections((s) => s.get(connectionId));
   const caps = connector.capabilities();
   const cursor = cursorStack[pageIndex];
 
@@ -47,7 +59,8 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
     for (const r of records.data?.items ?? []) {
       for (const k of Object.keys(r.payload)) keys.add(k);
     }
-    return [...keys].slice(0, 8);
+    // Show every payload key — the table scrolls horizontally for wide rows.
+    return [...keys];
   }, [records.data]);
 
   function nextPage() {
@@ -78,12 +91,65 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
   }
 
   function refresh() {
+    setSelected(new Set());
     qc.invalidateQueries({ queryKey: ["records", connectionId, collection] });
     qc.invalidateQueries({ queryKey: ["schema", connectionId, collection] });
   }
 
+  function toggleRow(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    const pageIds = (records.data?.items ?? []).map((r) => String(r.id));
+    setSelected((prev) => {
+      const allSelected = pageIds.length > 0 && pageIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) for (const id of pageIds) next.delete(id);
+      else for (const id of pageIds) next.add(id);
+      return next;
+    });
+  }
+
+  async function deleteSelected() {
+    const items = records.data?.items ?? [];
+    const ids = items.filter((r) => selected.has(String(r.id))).map((r) => r.id);
+    if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} selected record${ids.length === 1 ? "" : "s"}? This can't be undone.`)) return;
+    setBulkBusy(true);
+    try {
+      await connector.deleteRecords(collection, ids);
+      setBanner(`Deleted ${ids.length} record${ids.length === 1 ? "" : "s"}.`);
+      refresh();
+    } catch (err) {
+      setBanner(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function doExport(format: RecordFormat, withVectors: boolean) {
+    setShowExportMenu(false);
+    setExporting(true);
+    try {
+      const n = await exportCollection(connector, collection, format, withVectors);
+      setBanner(`Exported ${n} record${n === 1 ? "" : "s"} as ${format.toUpperCase()}.`);
+    } catch (err) {
+      setBanner(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const dim = schema.data?.dimension;
   const metric = schema.data?.metric;
+  const pageItems = records.data?.items ?? [];
+  const pageAllChecked = pageItems.length > 0 && pageItems.every((r) => selected.has(String(r.id)));
 
   return (
     <div>
@@ -124,14 +190,47 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
       ) : (
         <>
       {records.isError && <div className="banner err">{(records.error as Error).message}</div>}
-
-      {caps.filterBrowse && (
-        <div className="toolbar" style={{ marginBottom: 12 }}>
-          <button className={`btn sm ${browseFilter ? "primary" : ""}`} onClick={() => setShowFilter((v) => !v)}>
-            ⛃ Filter{browseFilter ? " ●" : ""}
+      {banner && (
+        <div className="banner" style={{ display: "flex", alignItems: "center" }}>
+          <span>{banner}</span>
+          <button className="btn ghost sm" style={{ marginLeft: "auto" }} onClick={() => setBanner(null)}>
+            ✕
           </button>
         </div>
       )}
+
+      <div className="toolbar" style={{ marginBottom: 12, gap: 8 }}>
+        <button className="btn sm primary" onClick={() => setShowAdd(true)}>
+          + Add record
+        </button>
+        <button className="btn sm" onClick={() => setShowImport(true)}>
+          ↥ Import
+        </button>
+        <div style={{ position: "relative" }}>
+          <button className="btn sm" onClick={() => setShowExportMenu((v) => !v)} disabled={exporting}>
+            {exporting ? <span className="spinner" /> : "↧ Export ▾"}
+          </button>
+          {showExportMenu && (
+            <div className="export-menu">
+              <button className="export-item" onClick={() => doExport("json", false)}>JSON (payloads)</button>
+              <button className="export-item" onClick={() => doExport("json", true)}>JSON + vectors</button>
+              <button className="export-item" onClick={() => doExport("jsonl", true)}>JSONL + vectors</button>
+              <button className="export-item" onClick={() => doExport("csv", false)}>CSV (payloads)</button>
+            </div>
+          )}
+        </div>
+        {caps.filterBrowse && (
+          <button className={`btn sm ${browseFilter ? "primary" : ""}`} onClick={() => setShowFilter((v) => !v)}>
+            ⛃ Filter{browseFilter ? " ●" : ""}
+          </button>
+        )}
+        <div style={{ flex: 1 }} />
+        {selected.size > 0 && (
+          <button className="btn sm danger" onClick={deleteSelected} disabled={bulkBusy}>
+            {bulkBusy ? <span className="spinner" /> : `Delete ${selected.size} selected`}
+          </button>
+        )}
+      </div>
       {caps.filterBrowse && showFilter && (
         <FilterBar
           engine={caps.engine}
@@ -144,6 +243,15 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
         <table>
           <thead>
             <tr>
+              <th style={{ width: 34 }}>
+                <input
+                  type="checkbox"
+                  checked={pageAllChecked}
+                  onChange={toggleAll}
+                  aria-label="Select all on this page"
+                  style={{ width: 15, height: 15, accentColor: "var(--accent)" }}
+                />
+              </th>
               <th style={{ width: 140 }}>ID</th>
               {columns.map((c) => (
                 <th key={c}>{c}</th>
@@ -154,32 +262,45 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
           <tbody>
             {records.isLoading && (
               <tr>
-                <td colSpan={columns.length + 2} style={{ padding: 24, textAlign: "center", color: "var(--text-dim)" }}>
+                <td colSpan={columns.length + 3} style={{ padding: 24, textAlign: "center", color: "var(--text-dim)" }}>
                   <span className="spinner" /> Loading records…
                 </td>
               </tr>
             )}
-            {records.data?.items.map((r) => (
-              <tr key={String(r.id)} style={{ cursor: "pointer" }} onClick={() => setInspect(r)}>
-                <td className="cell-id">
-                  <span className="truncate">{String(r.id)}</span>
-                </td>
-                {columns.map((c) => (
-                  <td key={c} className="cell-mono">
-                    <span className="truncate">{renderCell(r.payload[c])}</span>
+            {records.data?.items.map((r) => {
+              const rid = String(r.id);
+              const checked = selected.has(rid);
+              return (
+                <tr key={rid} className={checked ? "row-selected" : ""} style={{ cursor: "pointer" }}>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleRow(rid)}
+                      aria-label={`Select ${rid}`}
+                      style={{ width: 15, height: 15, accentColor: "var(--accent)" }}
+                    />
                   </td>
-                ))}
-                {columns.length === 0 && (
-                  <td className="cell-mono">
-                    <span className="truncate">{JSON.stringify(r.payload)}</span>
+                  <td className="cell-id" onClick={() => setInspect(r)}>
+                    <span className="truncate">{rid}</span>
                   </td>
-                )}
-              </tr>
-            ))}
+                  {columns.map((c) => (
+                    <td key={c} className="cell-mono" onClick={() => setInspect(r)}>
+                      <span className="truncate">{renderCell(r.payload[c])}</span>
+                    </td>
+                  ))}
+                  {columns.length === 0 && (
+                    <td className="cell-mono" onClick={() => setInspect(r)}>
+                      <span className="truncate">{JSON.stringify(r.payload)}</span>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
             {records.data?.items.length === 0 && (
               <tr>
-                <td colSpan={columns.length + 2} style={{ padding: 24, textAlign: "center", color: "var(--text-faint)" }}>
-                  This collection has no records.
+                <td colSpan={columns.length + 3} style={{ padding: 24, textAlign: "center", color: "var(--text-faint)" }}>
+                  This collection has no records. Use “Add record” or “Import” to populate it.
                 </td>
               </tr>
             )}
@@ -207,6 +328,36 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
           onClose={() => setInspect(null)}
           onChanged={() => {
             setInspect(null);
+            refresh();
+          }}
+        />
+      )}
+
+      {showAdd && (
+        <AddRecordModal
+          connector={connector}
+          conn={conn}
+          collection={collection}
+          dimension={dim}
+          onClose={() => setShowAdd(false)}
+          onAdded={() => {
+            setShowAdd(false);
+            setBanner("Record added.");
+            refresh();
+          }}
+        />
+      )}
+
+      {showImport && (
+        <ImportModal
+          connector={connector}
+          conn={conn}
+          collection={collection}
+          dimension={dim}
+          onClose={() => setShowImport(false)}
+          onImported={() => {
+            setShowImport(false);
+            setBanner("Import complete.");
             refresh();
           }}
         />
