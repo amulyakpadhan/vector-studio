@@ -165,6 +165,22 @@ test("textSearch hybrid without a vector omits the $vec variable entirely", asyn
   assert.equal((gqlCall.body as any).variables.vec, undefined);
 });
 
+test("searchByText delegates to hybrid with alpha=1 and no client vector", async () => {
+  const calls = stubFetch((_m, path) => {
+    if (path === "/v1/schema/Docs") return DOCS_CLASS;
+    if (path === "/v1/graphql") {
+      return { data: { Get: { Docs: [{ title: "hi", _additional: { id: "z", score: "0.9" } }] } } };
+    }
+    return {};
+  });
+  const hits = await conn().searchByText("Docs", { text: "hello", limit: 5 });
+  assert.equal(hits[0]!.id, "z");
+  const gqlCall = calls.find((c) => c.path === "/v1/graphql")!;
+  const body = gqlCall.body as { query: string; variables: Record<string, unknown> };
+  assert.match(body.query, /hybrid: \{ query: \$q, alpha: 1 \}/);
+  assert.equal(body.variables.vec, undefined);
+});
+
 test("getSchema exposes serverVectorizer when configured, undefined for vectorizer: none", async () => {
   const calls1 = stubFetch((_m, path) => {
     if (path === "/v1/schema/Docs") return DOCS_CLASS; // vectorizer: "none"

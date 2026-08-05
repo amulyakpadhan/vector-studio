@@ -21,6 +21,7 @@ interface Props {
   collection: string;
   dimension?: number;
   serverVectorizer?: string;
+  serverVectorizerField?: string;
   onClose: () => void;
   onImported: () => void;
 }
@@ -32,7 +33,16 @@ const CUSTOM_MODEL = "__custom__";
 
 type Phase = { kind: "embedding" | "uploading"; done: number; total: number } | null;
 
-export function ImportModal({ connector, conn, collection, dimension, serverVectorizer, onClose, onImported }: Props) {
+export function ImportModal({
+  connector,
+  conn,
+  collection,
+  dimension,
+  serverVectorizer,
+  serverVectorizerField,
+  onClose,
+  onImported,
+}: Props) {
   const bindEmbeddingModel = useConnections((s) => s.bindEmbeddingModel);
   const embedding = conn ? resolveEmbedding(conn) : undefined;
   const boundModel = conn ? boundModelFor(conn, collection) : undefined;
@@ -66,6 +76,10 @@ export function ImportModal({ connector, conn, collection, dimension, serverVect
 
   const missingVec = useMemo(() => (records ?? []).filter((r) => !r.vector).length, [records]);
   const hasVec = (records?.length ?? 0) - missingVec;
+  const missingVectorizerField = useMemo(() => {
+    if (!serverVectorizerField) return 0;
+    return (records ?? []).filter((r) => !r.vector && !(serverVectorizerField in r.payload)).length;
+  }, [records, serverVectorizerField]);
 
   async function onFile(file: File) {
     setParseError(null);
@@ -210,8 +224,27 @@ export function ImportModal({ connector, conn, collection, dimension, serverVect
 
             {records && missingVec > 0 && serverVectorizer && (
               <div className="banner" style={{ background: "var(--bg)" }}>
-                The {missingVec} record{missingVec === 1 ? "" : "s"} without a vector will be embedded automatically
-                by <strong>{serverVectorizer}</strong> on insert — nothing to configure.
+                {serverVectorizerField ? (
+                  <>
+                    The {missingVec} record{missingVec === 1 ? "" : "s"} without a vector will be embedded
+                    automatically by <strong>{serverVectorizer}</strong> from the payload's{" "}
+                    <code>{serverVectorizerField}</code> field.
+                    {missingVectorizerField > 0 && (
+                      <>
+                        {" "}
+                        <strong style={{ color: "var(--red)" }}>
+                          ⚠ {missingVectorizerField} of them {missingVectorizerField === 1 ? "is" : "are"} missing that
+                          field and will fail to import.
+                        </strong>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    The {missingVec} record{missingVec === 1 ? "" : "s"} without a vector will be embedded
+                    automatically by <strong>{serverVectorizer}</strong> on insert — nothing to configure.
+                  </>
+                )}
               </div>
             )}
 

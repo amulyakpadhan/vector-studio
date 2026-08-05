@@ -59,6 +59,13 @@ export interface CollectionSchema {
    * either because the engine has no such concept, or none is configured.
    */
   serverVectorizer?: string;
+  /**
+   * The payload/metadata field the server-side vectorizer reads text from
+   * (e.g. "chunk_text" on a Pinecone integrated-inference index). Only set
+   * when the engine requires text in one specific field, unlike engines
+   * (Weaviate) that auto-detect from any configured text property.
+   */
+  serverVectorizerField?: string;
   raw?: Json;
 }
 

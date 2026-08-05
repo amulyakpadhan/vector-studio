@@ -47,6 +47,13 @@ export interface VectorConnector {
   vectorSearch(collection: string, query: VectorQuery): Promise<SearchResult[]>;
   /** Only when capabilities().textSearch is true. */
   textSearch?(collection: string, query: TextQuery): Promise<SearchResult[]>;
+  /**
+   * Nearest-neighbor search by raw text, letting the engine embed the query
+   * itself — only meaningful (and only called) when the target collection's
+   * schema reports a `serverVectorizer`. Implemented per-engine on top of
+   * whatever native "search by text" capability that engine actually has.
+   */
+  searchByText?(collection: string, query: { text: string; limit: number; filter?: TextQuery["filter"] }): Promise<SearchResult[]>;
   /** Bulk vector export for the projection engine. */
   fetchVectors(collection: string, opts: SampleOpts): Promise<VectorSample>;
 

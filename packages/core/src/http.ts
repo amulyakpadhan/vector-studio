@@ -22,6 +22,26 @@ export class HttpClient {
   }
 
   async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    return this.send<T>(method, path, {
+      "Content-Type": "application/json",
+      ...this.opts.headers,
+    }, body === undefined ? undefined : JSON.stringify(body));
+  }
+
+  /**
+   * Like `request`, but sends a pre-serialized string body with an explicit
+   * content type instead of JSON-encoding an object — for APIs that expect
+   * something other than `application/json` (e.g. Pinecone's NDJSON record
+   * upsert endpoint).
+   */
+  async requestRaw<T>(method: string, path: string, rawBody: string, contentType: string): Promise<T> {
+    return this.send<T>(method, path, {
+      "Content-Type": contentType,
+      ...this.opts.headers,
+    }, rawBody);
+  }
+
+  private async send<T>(method: string, path: string, headers: Record<string, string>, body?: BodyInit): Promise<T> {
     const target = this.opts.baseUrl.replace(/\/+$/, "") + path;
     const url = this.opts.bridgeUrl
       ? `${this.opts.bridgeUrl.replace(/\/+$/, "")}/proxy?target=${encodeURIComponent(target)}`
@@ -32,15 +52,7 @@ export class HttpClient {
 
     let res: Response;
     try {
-      res = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          ...this.opts.headers,
-        },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        signal: controller.signal,
-      });
+      res = await fetch(url, { method, headers, body, signal: controller.signal });
     } catch (err) {
       throw new ConnectorError(
         err instanceof DOMException && err.name === "AbortError"
