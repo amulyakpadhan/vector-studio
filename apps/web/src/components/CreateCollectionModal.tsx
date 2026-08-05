@@ -23,6 +23,8 @@ const PINECONE_REGIONS: Record<(typeof PINECONE_CLOUDS)[number], string[]> = {
 /** Engines whose connector infers the vector dimension from the first insert. */
 const DIMENSION_INFERRED = new Set(["weaviate", "chroma"]);
 
+const PINECONE_EMBED_MODELS = ["multilingual-e5-large"];
+
 export function CreateCollectionModal({ connector, onClose, onCreated }: Props) {
   const caps = connector.capabilities();
   const [name, setName] = useState("");
@@ -30,18 +32,33 @@ export function CreateCollectionModal({ connector, onClose, onCreated }: Props) 
   const [metric, setMetric] = useState<DistanceMetric>("cosine");
   const [cloud, setCloud] = useState<(typeof PINECONE_CLOUDS)[number]>("aws");
   const [region, setRegion] = useState(PINECONE_REGIONS.aws[0]!);
+  const [integrated, setIntegrated] = useState(false);
+  const [embedModel, setEmbedModel] = useState(PINECONE_EMBED_MODELS[0]!);
+  const [embedField, setEmbedField] = useState("text");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEscape(onClose);
 
-  const dimensionInferred = DIMENSION_INFERRED.has(caps.engine);
-  const canCreate = caps.createCollection && name.trim() !== "" && (dimensionInferred || dimension > 0);
+  const isPinecone = caps.engine === "pinecone";
+  const useIntegrated = isPinecone && integrated;
+  const dimensionInferred = DIMENSION_INFERRED.has(caps.engine) || useIntegrated;
+  const canCreate =
+    caps.createCollection &&
+    name.trim() !== "" &&
+    (dimensionInferred || dimension > 0) &&
+    (!useIntegrated || embedField.trim() !== "");
 
   async function create() {
     setBusy(true);
     setError(null);
     try {
-      const options = caps.engine === "pinecone" ? { cloud, region } : undefined;
+      const options = isPinecone
+        ? ({
+            cloud,
+            region,
+            ...(useIntegrated ? { embedModel, embedField: embedField.trim() } : {}),
+          } as Record<string, string>)
+        : undefined;
       await connector.createCollection({ name: name.trim(), dimension, metric, options });
       onCreated(name.trim());
     } catch (err) {
@@ -76,41 +93,85 @@ export function CreateCollectionModal({ connector, onClose, onCreated }: Props) 
           />
         </div>
 
-        <div className="row2">
+        {isPinecone && (
           <div className="field">
-            <label>Dimension {dimensionInferred ? "(optional)" : ""}</label>
-            <input
-              className="input"
-              type="number"
-              min={1}
-              value={dimension}
-              onChange={(e) => setDimension(Number(e.target.value))}
-              list="common-dims"
-            />
-            <datalist id="common-dims">
-              {COMMON_DIMS.map((d) => (
-                <option key={d} value={d} />
-              ))}
-            </datalist>
-            {dimensionInferred && (
-              <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 6 }}>
-                {caps.engine === "weaviate" ? "Weaviate" : "Chroma"} infers the dimension from your first insert.
-              </div>
-            )}
+            <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer", marginBottom: 0 }}>
+              <input
+                type="checkbox"
+                checked={integrated}
+                onChange={(e) => setIntegrated(e.target.checked)}
+                style={{ width: 15, height: 15, accentColor: "var(--accent)" }}
+              />
+              <span style={{ color: "var(--text)" }}>Use Pinecone integrated inference</span>
+            </label>
+            <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 6 }}>
+              Pinecone embeds text server-side on insert and search — no API key or client-side model needed.
+            </div>
           </div>
-          <div className="field">
-            <label>Distance metric</label>
-            <select className="select" value={metric} onChange={(e) => setMetric(e.target.value as DistanceMetric)}>
-              {METRICS.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        )}
 
-        {caps.engine === "pinecone" && (
+        {!useIntegrated && (
+          <div className="row2">
+            <div className="field">
+              <label>Dimension {dimensionInferred ? "(optional)" : ""}</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                value={dimension}
+                onChange={(e) => setDimension(Number(e.target.value))}
+                list="common-dims"
+              />
+              <datalist id="common-dims">
+                {COMMON_DIMS.map((d) => (
+                  <option key={d} value={d} />
+                ))}
+              </datalist>
+              {dimensionInferred && (
+                <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 6 }}>
+                  {caps.engine === "weaviate" ? "Weaviate" : "Chroma"} infers the dimension from your first insert.
+                </div>
+              )}
+            </div>
+            <div className="field">
+              <label>Distance metric</label>
+              <select className="select" value={metric} onChange={(e) => setMetric(e.target.value as DistanceMetric)}>
+                {METRICS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {useIntegrated && (
+          <div className="row2">
+            <div className="field">
+              <label>Embedding model</label>
+              <select className="select" value={embedModel} onChange={(e) => setEmbedModel(e.target.value)}>
+                {PINECONE_EMBED_MODELS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>Embed from payload field</label>
+              <input
+                className="input"
+                placeholder="text"
+                value={embedField}
+                onChange={(e) => setEmbedField(e.target.value)}
+                style={{ fontFamily: "var(--mono)" }}
+              />
+            </div>
+          </div>
+        )}
+
+        {isPinecone && (
           <div className="row2">
             <div className="field">
               <label>Cloud</label>

@@ -98,3 +98,120 @@ test("vectorSearch maps matches", async () => {
   const hits = await conn().vectorSearch("docs", { vector: [0.1, 0.2], limit: 3 });
   assert.deepEqual(hits, [{ id: "a", score: 0.88, payload: { t: "x" }, vector: undefined }]);
 });
+
+// ─── integrated inference ────────────────────────────────────────────────────
+
+const INTEGRATED_INDEX = {
+  name: "docs",
+  metric: "cosine",
+  host: "docs-abc.svc.pinecone.io",
+  status: { ready: true, state: "Ready" },
+  embed: { model: "multilingual-e5-large", field_map: { text: "chunk_text" }, dimension: 1024 },
+};
+
+test("getSchema exposes serverVectorizer + serverVectorizerField for an integrated index", async () => {
+  stubFetch({ "GET /indexes/docs": INTEGRATED_INDEX });
+  const schema = await conn().getSchema("docs");
+  assert.equal(schema.serverVectorizer, "multilingual-e5-large");
+  assert.equal(schema.serverVectorizerField, "chunk_text");
+  assert.equal(schema.dimension, 1024); // falls back to embed.dimension
+});
+
+test("getSchema reports no serverVectorizer for a classic index", async () => {
+  stubFetch({ "GET /indexes/docs": INDEX });
+  const schema = await conn().getSchema("docs");
+  assert.equal(schema.serverVectorizer, undefined);
+  assert.equal(schema.serverVectorizerField, undefined);
+});
+
+test("createCollection with an embedModel option hits create-for-model", async () => {
+  const calls = stubFetch({ "POST /indexes/create-for-model": {} });
+  await conn().createCollection({
+    name: "docs",
+    dimension: 0,
+    metric: "cosine",
+    options: { embedModel: "multilingual-e5-large", embedField: "chunk_text", cloud: "gcp", region: "us-central1" },
+  });
+  const call = calls.find((c) => c.url.includes("/indexes/create-for-model"))!;
+  const body = JSON.parse(call.init!.body as string);
+  assert.deepEqual(body, {
+    name: "docs",
+    cloud: "gcp",
+    region: "us-central1",
+    embed: { model: "multilingual-e5-large", field_map: { text: "chunk_text" } },
+  });
+});
+
+test("upsertRecords with no vector on an integrated index sends NDJSON to the records upsert endpoint", async () => {
+  const calls = stubFetch({
+    "GET /indexes/docs": INTEGRATED_INDEX,
+    "POST /records/namespaces/default/upsert": {},
+  });
+  const res = await conn().upsertRecords("docs", [
+    { id: "rec1", payload: { chunk_text: "hello world", category: "greeting" } },
+    { id: "rec2", payload: { chunk_text: "goodbye world", category: "farewell" } },
+  ]);
+  assert.equal(res.upserted, 2);
+  const call = calls.find((c) => c.url.includes("/records/namespaces/default/upsert"))!;
+  assert.equal((call.init!.headers as Record<string, string>)["Content-Type"], "application/x-ndjson");
+  const lines = (call.init!.body as string).trim().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual(lines, [
+    { _id: "rec1", chunk_text: "hello world", category: "greeting" },
+    { _id: "rec2", chunk_text: "goodbye world", category: "farewell" },
+  ]);
+});
+
+test("upsertRecords splits a mixed batch between /vectors/upsert and the records endpoint", async () => {
+  const calls = stubFetch({
+    "GET /indexes/docs": INTEGRATED_INDEX,
+    "POST /vectors/upsert": { upsertedCount: 1 },
+    "POST /records/namespaces/default/upsert": {},
+  });
+  const res = await conn().upsertRecords("docs", [
+    { id: "vec1", vector: [0.1, 0.2], payload: { chunk_text: "has a vector already" } },
+    { id: "rec1", payload: { chunk_text: "needs server embedding" } },
+  ]);
+  assert.equal(res.upserted, 2);
+  assert.ok(calls.some((c) => c.url.includes("/vectors/upsert")));
+  assert.ok(calls.some((c) => c.url.includes("/records/namespaces/default/upsert")));
+});
+
+test("upsertRecords without a vector throws clearly when the index has no server embedding", async () => {
+  stubFetch({ "GET /indexes/docs": INDEX });
+  await assert.rejects(
+    () => conn().upsertRecords("docs", [{ id: "rec1", payload: { text: "no vector, no embed config" } }]),
+    (e: Error) => e.name === "ConnectorError" && /no server-side embedding configured/.test(e.message),
+  );
+});
+
+test("upsertRecords throws when a record is missing the embed field", async () => {
+  stubFetch({ "GET /indexes/docs": INTEGRATED_INDEX });
+  await assert.rejects(
+    () => conn().upsertRecords("docs", [{ id: "rec1", payload: { wrong_field: "oops" } }]),
+    (e: Error) => e.name === "ConnectorError" && /no "chunk_text" field/.test(e.message),
+  );
+});
+
+test("searchByText posts to the records search endpoint and maps hits", async () => {
+  const calls = stubFetch({
+    "GET /indexes/docs": INTEGRATED_INDEX,
+    "POST /records/namespaces/default/search": {
+      result: { hits: [{ _id: "rec1", _score: 0.93, fields: { chunk_text: "hello world" } }] },
+    },
+  });
+  const hits = await conn().searchByText("docs", { text: "greeting", limit: 5 });
+  assert.deepEqual(hits, [{ id: "rec1", score: 0.93, payload: { chunk_text: "hello world" } }]);
+  const call = calls.find((c) => c.url.includes("/records/namespaces/default/search"))!;
+  const body = JSON.parse(call.init!.body as string);
+  assert.deepEqual(body.query, { top_k: 5, inputs: { text: "greeting" } });
+});
+
+test("searchByText uses the configured namespace instead of 'default' when one is set", async () => {
+  const calls = stubFetch({
+    "GET /indexes/docs": INTEGRATED_INDEX,
+    "POST /records/namespaces/prod/search": { result: { hits: [] } },
+  });
+  const c = new PineconeConnector({ engine: "pinecone", url: "", apiKey: "pk", options: { namespace: "prod" } });
+  await c.searchByText("docs", { text: "x", limit: 1 });
+  assert.ok(calls.some((call) => call.url.includes("/records/namespaces/prod/search")));
+});

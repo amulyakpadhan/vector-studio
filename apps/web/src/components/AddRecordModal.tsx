@@ -12,6 +12,7 @@ interface Props {
   collection: string;
   dimension?: number;
   serverVectorizer?: string;
+  serverVectorizerField?: string;
   onClose: () => void;
   onAdded: () => void;
 }
@@ -20,14 +21,25 @@ type VectorMode = "paste" | "embed";
 
 const CUSTOM_MODEL = "__custom__";
 
-export function AddRecordModal({ connector, conn, collection, dimension, serverVectorizer, onClose, onAdded }: Props) {
+export function AddRecordModal({
+  connector,
+  conn,
+  collection,
+  dimension,
+  serverVectorizer,
+  serverVectorizerField,
+  onClose,
+  onAdded,
+}: Props) {
   const bindEmbeddingModel = useConnections((s) => s.bindEmbeddingModel);
   const embedding = conn ? resolveEmbedding(conn) : undefined;
   const boundModel = conn ? boundModelFor(conn, collection) : undefined;
   const hasEmbedding = !!embedding;
 
   const [id, setId] = useState("");
-  const [payloadText, setPayloadText] = useState("{\n  \n}");
+  const [payloadText, setPayloadText] = useState(
+    serverVectorizerField ? `{\n  "${serverVectorizerField}": ""\n}` : "{\n  \n}",
+  );
   const [vectorMode, setVectorMode] = useState<VectorMode>(hasEmbedding && !serverVectorizer ? "embed" : "paste");
   const [vectorText, setVectorText] = useState("");
   const [embedSource, setEmbedSource] = useState("");
@@ -137,8 +149,17 @@ export function AddRecordModal({ connector, conn, collection, dimension, serverV
           <div className="field">
             <label>Vector</label>
             <div className="banner" style={{ background: "var(--bg)" }}>
-              Generated automatically by <strong>{serverVectorizer}</strong> when this record is added — nothing to
-              supply here.
+              {serverVectorizerField ? (
+                <>
+                  Generated automatically by <strong>{serverVectorizer}</strong> from the payload's{" "}
+                  <code>{serverVectorizerField}</code> field — make sure your JSON above includes it.
+                </>
+              ) : (
+                <>
+                  Generated automatically by <strong>{serverVectorizer}</strong> when this record is added — nothing
+                  to supply here.
+                </>
+              )}
             </div>
           </div>
         ) : (

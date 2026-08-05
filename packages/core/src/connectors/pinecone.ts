@@ -50,11 +50,18 @@ const PINECONE_TO_METRIC: Record<string, DistanceMetric> = {
 
 interface PineconeIndex {
   name: string;
-  dimension: number;
+  dimension?: number;
   metric: string;
   host: string;
   status?: { ready: boolean; state: string };
   spec?: Json;
+  /** Present only on indexes created with integrated (server-side) embedding. */
+  embed?: {
+    model: string;
+    field_map?: Record<string, string>;
+    dimension?: number;
+    metric?: string;
+  };
 }
 
 interface PineconeIndexList {
@@ -87,6 +94,10 @@ interface PineconeFetchResult {
 
 interface PineconeQueryResult {
   matches: { id: string; score: number; values?: number[]; metadata?: Record<string, Json> }[];
+}
+
+interface PineconeSearchRecordsResult {
+  result: { hits: { _id: string; _score: number; fields?: Record<string, Json> }[] };
 }
 
 // ─── connector ───────────────────────────────────────────────────────────────
@@ -167,7 +178,7 @@ export class PineconeConnector implements VectorConnector {
         return {
           name: idx.name,
           count,
-          dimension: idx.dimension,
+          dimension: idx.dimension ?? idx.embed?.dimension,
           metric: PINECONE_TO_METRIC[idx.metric],
           status: idx.status?.state,
         };
@@ -177,12 +188,15 @@ export class PineconeConnector implements VectorConnector {
 
   async getSchema(collection: string): Promise<CollectionSchema> {
     const idx = await this.describe(collection);
+    const embedField = idx.embed?.field_map ? Object.values(idx.embed.field_map)[0] : undefined;
     // Pinecone metadata is schemaless — no field list to report.
     return {
       name: collection,
-      dimension: idx.dimension,
+      dimension: idx.dimension ?? idx.embed?.dimension,
       metric: PINECONE_TO_METRIC[idx.metric],
       fields: [],
+      serverVectorizer: idx.embed?.model,
+      serverVectorizerField: embedField,
       raw: idx as unknown as Json,
     };
   }
@@ -195,6 +209,19 @@ export class PineconeConnector implements VectorConnector {
   async createCollection(spec: CreateCollectionSpec): Promise<void> {
     const cloud = str(spec.options?.["cloud"]) || "aws";
     const region = str(spec.options?.["region"]) || "us-east-1";
+    const embedModel = str(spec.options?.["embedModel"]);
+
+    if (embedModel) {
+      const embedField = str(spec.options?.["embedField"]) || "text";
+      await this.control.post("/indexes/create-for-model", {
+        name: spec.name,
+        cloud,
+        region,
+        embed: { model: embedModel, field_map: { text: embedField } },
+      });
+      return;
+    }
+
     await this.control.post("/indexes", {
       name: spec.name,
       dimension: spec.dimension,
@@ -227,16 +254,62 @@ export class PineconeConnector implements VectorConnector {
   }
 
   async upsertRecords(collection: string, records: VectorRecord[]): Promise<UpsertResult> {
+    const withVector = records.filter((r) => r.vector && r.vector.length > 0);
+    const textOnly = records.filter((r) => !(r.vector && r.vector.length > 0));
+
+    let upserted = 0;
+
+    if (withVector.length > 0) {
+      const data = await this.dataClient(collection);
+      const res = await data.post<{ upsertedCount?: number }>("/vectors/upsert", {
+        vectors: withVector.map((r) => ({
+          id: String(r.id),
+          values: r.vector,
+          metadata: r.payload,
+        })),
+        ...this.ns(),
+      });
+      upserted += res.upsertedCount ?? withVector.length;
+    }
+
+    if (textOnly.length > 0) {
+      const idx = await this.describe(collection);
+      const embedField = idx.embed?.field_map ? Object.values(idx.embed.field_map)[0] : undefined;
+      if (!idx.embed || !embedField) {
+        throw new ConnectorError(
+          `Index "${collection}" has no server-side embedding configured — supply a vector for every record.`,
+          "pinecone",
+        );
+      }
+      await this.upsertRecordsByText(collection, textOnly, embedField);
+      upserted += textOnly.length;
+    }
+
+    return { upserted };
+  }
+
+  /** Integrated-inference indexes: upsert text via the NDJSON records API and let Pinecone embed it. */
+  private async upsertRecordsByText(collection: string, records: VectorRecord[], embedField: string): Promise<void> {
     const data = await this.dataClient(collection);
-    const res = await data.post<{ upsertedCount?: number }>("/vectors/upsert", {
-      vectors: records.map((r) => ({
-        id: String(r.id),
-        values: r.vector ?? [],
-        metadata: r.payload,
-      })),
-      ...this.ns(),
+    // Unlike the classic vector endpoints, the records API requires a real
+    // namespace name — the empty/default namespace isn't accepted here.
+    const namespace = this.namespace || "default";
+    const lines = records.map((r) => {
+      const row: Record<string, Json> = { _id: String(r.id), ...r.payload };
+      if (!(embedField in row)) {
+        throw new ConnectorError(
+          `Record ${r.id} has no "${embedField}" field to embed — this index embeds from that field.`,
+          "pinecone",
+        );
+      }
+      return JSON.stringify(row);
     });
-    return { upserted: res.upsertedCount ?? records.length };
+    await data.requestRaw(
+      "POST",
+      `/records/namespaces/${encodeURIComponent(namespace)}/upsert`,
+      lines.join("\n") + "\n",
+      "application/x-ndjson",
+    );
   }
 
   async updatePayload(collection: string, id: string | number, payload: Record<string, unknown>): Promise<void> {
@@ -264,6 +337,30 @@ export class PineconeConnector implements VectorConnector {
       score: m.score,
       payload: m.metadata ?? {},
       vector: m.values,
+    }));
+  }
+
+  /** Integrated-inference indexes only: search by raw text via the records API. */
+  async searchByText(
+    collection: string,
+    query: { text: string; limit: number; filter?: Json },
+  ): Promise<SearchResult[]> {
+    const data = await this.dataClient(collection);
+    const namespace = this.namespace || "default";
+    const res = await data.post<PineconeSearchRecordsResult>(
+      `/records/namespaces/${encodeURIComponent(namespace)}/search`,
+      {
+        query: {
+          top_k: query.limit,
+          inputs: { text: query.text },
+          ...(query.filter ? { filter: query.filter } : {}),
+        },
+      },
+    );
+    return res.result.hits.map((h) => ({
+      id: h._id,
+      score: h._score,
+      payload: h.fields ?? {},
     }));
   }
 

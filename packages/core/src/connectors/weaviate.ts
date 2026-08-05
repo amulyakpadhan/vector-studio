@@ -307,6 +307,14 @@ export class WeaviateConnector implements VectorConnector {
     return hits.map((h) => this.toSearchResult(h, meta.properties, "score"));
   }
 
+  /** Pure-vector hybrid (alpha=1) lets the class's own vectorizer embed the query — no client key needed. */
+  async searchByText(
+    collection: string,
+    query: { text: string; limit: number; filter?: Json },
+  ): Promise<SearchResult[]> {
+    return this.textSearch(collection, { text: query.text, mode: "hybrid", limit: query.limit, filter: query.filter, alpha: 1 });
+  }
+
   async fetchVectors(collection: string, opts: SampleOpts): Promise<VectorSample> {
     const page = await this.listRecords(collection, { limit: opts.limit, cursor: opts.cursor, withVectors: true });
     const withVec = page.items.filter((r) => r.vector !== undefined);

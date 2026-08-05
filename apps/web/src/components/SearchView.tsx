@@ -112,10 +112,10 @@ export function SearchView({ connector, conn, collection, dimension, serverVecto
       } else if (mode === "semantic") {
         if (!text.trim()) throw new Error("Enter text to search for.");
         if (serverVectorizer) {
-          // Pure-vector hybrid (alpha=1) lets the engine embed the query
-          // itself — no client key, no model choice, nothing to keep in sync.
-          if (!connector.textSearch) throw new Error("This engine doesn't support server-side search.");
-          hits = await connector.textSearch(collection, { text: text.trim(), mode: "hybrid", limit, filter, alpha: 1 });
+          // Let the engine embed the query itself — no client key, no model
+          // choice, nothing to keep in sync.
+          if (!connector.searchByText) throw new Error("This engine doesn't support server-side search.");
+          hits = await connector.searchByText(collection, { text: text.trim(), limit, filter });
         } else {
           const vector = await embedQuery();
           hits = await connector.vectorSearch(collection, { vector, limit, filter });

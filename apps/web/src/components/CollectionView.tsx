@@ -354,6 +354,7 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
           collection={collection}
           dimension={dim}
           serverVectorizer={schema.data?.serverVectorizer}
+          serverVectorizerField={schema.data?.serverVectorizerField}
           onClose={() => setShowAdd(false)}
           onAdded={() => {
             setShowAdd(false);
@@ -370,6 +371,7 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
           collection={collection}
           dimension={dim}
           serverVectorizer={schema.data?.serverVectorizer}
+          serverVectorizerField={schema.data?.serverVectorizerField}
           onClose={() => setShowImport(false)}
           onImported={() => {
             setShowImport(false);
