@@ -4,6 +4,21 @@ import { useEffect, useState } from "react";
 import { createConnector, type DbEngine } from "@vyn/core";
 import { useConnections, toConfig, type SavedConnection } from "@/lib/store";
 import { useBridge, BRIDGE_URL } from "@/lib/bridge";
+import { useEscape } from "@/lib/useEscape";
+
+/** Engine-specific connection settings, surfaced under "Advanced". */
+const ENGINE_OPTIONS: Partial<Record<DbEngine, { key: string; label: string; placeholder: string }[]>> = {
+  pinecone: [{ key: "namespace", label: "Namespace", placeholder: "default (leave blank)" }],
+  chroma: [
+    { key: "tenant", label: "Tenant", placeholder: "default_tenant" },
+    { key: "database", label: "Database", placeholder: "default_database" },
+  ],
+  milvus: [
+    { key: "dbName", label: "Database", placeholder: "default" },
+    { key: "primaryField", label: "Primary-key field", placeholder: "id" },
+    { key: "vectorField", label: "Vector field", placeholder: "vector" },
+  ],
+};
 
 /** Heuristic: does this URL point at the user's own machine / a private network? */
 function looksLocal(url: string): boolean {
@@ -58,7 +73,26 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
   const [url, setUrl] = useState(existing?.url ?? "");
   const [apiKey, setApiKey] = useState(existing?.apiKey ?? "");
   const [useBridgeOn, setUseBridgeOn] = useState<boolean>(!!existing?.bridgeUrl);
+  const [options, setOptions] = useState<Record<string, string>>(() => {
+    const o: Record<string, string> = {};
+    for (const [k, v] of Object.entries(existing?.options ?? {})) {
+      if (k !== "bridgeUrl" && (typeof v === "string" || typeof v === "number")) o[k] = String(v);
+    }
+    return o;
+  });
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [test, setTest] = useState<TestState>({ kind: "idle" });
+  useEscape(onClose);
+
+  const optionDefs = ENGINE_OPTIONS[engine] ?? [];
+  function buildOptions(): Record<string, string> | undefined {
+    const out: Record<string, string> = {};
+    for (const def of optionDefs) {
+      const v = options[def.key]?.trim();
+      if (v) out[def.key] = v;
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
 
   const bridge = useBridge();
   // When the bridge comes online for a new connection that likely needs it,
@@ -82,7 +116,7 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
     setTest({ kind: "testing" });
     try {
       const connector = createConnector(
-        toConfig({ id: "test", name, engine, url, apiKey, bridgeUrl, createdAt: 0 }),
+        toConfig({ id: "test", name, engine, url, apiKey, bridgeUrl, options: buildOptions(), createdAt: 0 }),
       );
       const res = await connector.testConnection();
       if (res.ok) setTest({ kind: "ok", version: res.version, latencyMs: res.latencyMs });
@@ -101,6 +135,7 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
       url: savedUrl,
       apiKey: apiKey.trim() || undefined,
       bridgeUrl,
+      options: buildOptions(),
     };
     if (existing) {
       update(existing.id, fields);
@@ -219,6 +254,34 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
 
         {useBridgeOn && bridge.status === "offline" && (
           <div className="banner err">The bridge isn’t running — start it with `pnpm bridge` from the repo, or this connection won’t reach the database.</div>
+        )}
+
+        {optionDefs.length > 0 && (
+          <div className="field">
+            <button
+              type="button"
+              className="btn ghost sm"
+              style={{ padding: "2px 0" }}
+              onClick={() => setShowAdvanced((v) => !v)}
+            >
+              {showAdvanced ? "▾" : "▸"} Advanced ({engineDef.label} settings)
+            </button>
+            {showAdvanced && (
+              <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                {optionDefs.map((def) => (
+                  <div key={def.key}>
+                    <label style={{ fontSize: 12.5, color: "var(--text-dim)" }}>{def.label}</label>
+                    <input
+                      className="input"
+                      placeholder={def.placeholder}
+                      value={options[def.key] ?? ""}
+                      onChange={(e) => setOptions((o) => ({ ...o, [def.key]: e.target.value }))}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {test.kind === "ok" && (

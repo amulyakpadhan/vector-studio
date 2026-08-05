@@ -16,6 +16,7 @@ export function Studio({ connectionId }: { connectionId: string }) {
   const [hydrated, setHydrated] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [collFilter, setCollFilter] = useState("");
 
   useEffect(() => setHydrated(true), []);
 
@@ -68,9 +69,21 @@ export function Studio({ connectionId }: { connectionId: string }) {
             </button>
           </div>
 
+          {(collections.data?.length ?? 0) > 8 && (
+            <input
+              className="input"
+              placeholder="Filter collections…"
+              value={collFilter}
+              onChange={(e) => setCollFilter(e.target.value)}
+              style={{ margin: "0 4px 8px", width: "calc(100% - 8px)", fontSize: 13 }}
+            />
+          )}
+
           {collections.isLoading && (
-            <div style={{ padding: 12, color: "var(--text-dim)", display: "flex", gap: 8, alignItems: "center" }}>
-              <span className="spinner" /> Loading…
+            <div style={{ padding: 6, display: "grid", gap: 6 }}>
+              {Array.from({ length: 5 }).map((_v, i) => (
+                <div key={i} className="skeleton-row" style={{ height: 30, borderRadius: 8 }} />
+              ))}
             </div>
           )}
           {collections.isError && (
@@ -79,19 +92,21 @@ export function Studio({ connectionId }: { connectionId: string }) {
             </div>
           )}
           {collections.data?.length === 0 && (
-            <div style={{ padding: 12, color: "var(--text-faint)", fontSize: 13 }}>No collections.</div>
+            <div style={{ padding: 12, color: "var(--text-faint)", fontSize: 13 }}>No collections yet.</div>
           )}
 
-          {collections.data?.map((c: CollectionInfo) => (
-            <div
-              key={c.name}
-              className={`nav-item ${selected === c.name ? "active" : ""}`}
-              onClick={() => setSelected(c.name)}
-            >
-              <span className="truncate">{c.name}</span>
-              {c.count != null && <span className="count">{c.count.toLocaleString()}</span>}
-            </div>
-          ))}
+          {collections.data
+            ?.filter((c) => c.name.toLowerCase().includes(collFilter.toLowerCase()))
+            .map((c: CollectionInfo) => (
+              <div
+                key={c.name}
+                className={`nav-item ${selected === c.name ? "active" : ""}`}
+                onClick={() => setSelected(c.name)}
+              >
+                <span className="truncate">{c.name}</span>
+                {c.count != null && <span className="count">{c.count.toLocaleString()}</span>}
+              </div>
+            ))}
         </aside>
 
         <section className="main">

@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useConnections, type SavedConnection } from "@/lib/store";
 import { ConnectionForm } from "./ConnectionForm";
 import { EngineBadge } from "./EngineBadge";
+import { ConnectionHealth } from "./ConnectionHealth";
 
 export function Dashboard() {
   const connections = useConnections((s) => s.connections);
   const remove = useConnections((s) => s.remove);
+  const add = useConnections((s) => s.add);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<SavedConnection | undefined>();
   const [hydrated, setHydrated] = useState(false);
@@ -41,20 +43,21 @@ export function Dashboard() {
         <div className="grid">
           {connections.map((c, i) => (
             <div key={c.id} className="card link card-in" style={{ "--i": i } as React.CSSProperties}>
-              <Link href={`/studio/${c.id}`}>
-                <div className="card-top">
-                  <div>
-                    <div className="card-name">{c.name}</div>
-                    <div className="card-meta">
-                      {c.url}
-                      {c.bridgeUrl && (
-                        <span style={{ color: "var(--accent-bright)", marginLeft: 8 }}>· via bridge</span>
-                      )}
-                    </div>
+              <div className="card-top">
+                <Link href={`/studio/${c.id}`} style={{ minWidth: 0, flex: 1 }}>
+                  <div className="card-name">{c.name}</div>
+                  <div className="card-meta">
+                    {c.url}
+                    {c.bridgeUrl && (
+                      <span style={{ color: "var(--accent-bright)", marginLeft: 8 }}>· via bridge</span>
+                    )}
                   </div>
+                </Link>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
+                  <ConnectionHealth conn={c} />
                   <EngineBadge engine={c.engine} />
                 </div>
-              </Link>
+              </div>
               <div className="card-foot">
                 <Link href={`/studio/${c.id}`} className="btn sm">
                   Open →
@@ -65,6 +68,16 @@ export function Dashboard() {
                     onClick={() => { setEditing(c); setShowForm(true); }}
                   >
                     Edit
+                  </button>
+                  <button
+                    className="btn ghost sm"
+                    title="Duplicate this connection"
+                    onClick={() => {
+                      const { id: _id, createdAt: _c, ...rest } = c;
+                      add({ ...rest, name: `${c.name} (copy)` });
+                    }}
+                  >
+                    Duplicate
                   </button>
                   <button
                     className="btn ghost sm danger"

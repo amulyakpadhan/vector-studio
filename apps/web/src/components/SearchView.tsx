@@ -5,6 +5,7 @@ import type { Json, SearchResult, VectorConnector, VectorRecord } from "@vyn/cor
 import { useConnections } from "@/lib/store";
 import { embedText, EmbeddingError } from "@/lib/embeddings";
 import { RecordDrawer } from "./RecordDrawer";
+import { FilterBar } from "./FilterBar";
 
 interface Props {
   connector: VectorConnector;
@@ -50,6 +51,7 @@ export function SearchView({ connector, connectionId, collection, onChanged }: P
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inspect, setInspect] = useState<VectorRecord | null>(null);
+  const [filter, setFilter] = useState<Json | undefined>(undefined);
 
   const needsEmbedding = mode === "semantic" || mode === "hybrid";
   const embeddingRequired = mode === "semantic";
@@ -74,28 +76,28 @@ export function SearchView({ connector, connectionId, collection, onChanged }: P
       if (mode === "keyword") {
         if (!text.trim()) throw new Error("Enter a search query.");
         if (!connector.textSearch) throw new Error("This engine doesn't support text search.");
-        hits = await connector.textSearch(collection, { text: text.trim(), mode: "keyword", limit });
+        hits = await connector.textSearch(collection, { text: text.trim(), mode: "keyword", limit, filter });
       } else if (mode === "hybrid") {
         if (!text.trim()) throw new Error("Enter a search query.");
         if (!connector.textSearch) throw new Error("This engine doesn't support text search.");
         // Embedding key is optional here — without it, hybrid still runs as
         // keyword-only; with it, the query genuinely blends keyword + vector.
         const vector = apiKey.trim() ? await embedText("openai", apiKey.trim(), text.trim()) : undefined;
-        hits = await connector.textSearch(collection, { text: text.trim(), mode: "hybrid", limit, vector });
+        hits = await connector.textSearch(collection, { text: text.trim(), mode: "hybrid", limit, vector, filter });
       } else if (mode === "semantic") {
         if (!text.trim()) throw new Error("Enter text to search for.");
         const vector = await embedText("openai", apiKey.trim(), text.trim());
-        hits = await connector.vectorSearch(collection, { vector, limit });
+        hits = await connector.vectorSearch(collection, { vector, limit, filter });
       } else if (mode === "similar") {
         if (!recordId.trim()) throw new Error("Enter a record ID.");
         const rec = await connector.getRecord(collection, recordId.trim());
         if (!rec.vector || rec.vector.length === 0) {
           throw new Error("That record has no stored vector to search by.");
         }
-        hits = await connector.vectorSearch(collection, { vector: rec.vector, limit });
+        hits = await connector.vectorSearch(collection, { vector: rec.vector, limit, filter });
       } else {
         const parsed = parseVector(vectorText);
-        hits = await connector.vectorSearch(collection, { vector: parsed, limit });
+        hits = await connector.vectorSearch(collection, { vector: parsed, limit, filter });
       }
       setResults(hits);
     } catch (err) {
@@ -186,6 +188,13 @@ export function SearchView({ connector, connectionId, collection, onChanged }: P
         {mode === "similar" && "Finds the nearest neighbors of an existing record, using its stored vector."}
         {mode === "vector" && "Paste a raw query vector as a JSON array."}
       </div>
+
+      {caps.payloadFilters && (
+        <div className="field">
+          <label>Filter (optional)</label>
+          <FilterBar engine={caps.engine} onApply={setFilter} />
+        </div>
+      )}
 
       {error && <div className="banner err">{error}</div>}
 

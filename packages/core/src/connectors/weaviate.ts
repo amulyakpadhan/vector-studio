@@ -113,7 +113,8 @@ export class WeaviateConnector implements VectorConnector {
       engine: "weaviate",
       textSearch: true, // bm25 + hybrid via GraphQL
       hybridSearch: true,
-      payloadFilters: false, // GraphQL `where` not wired yet
+      payloadFilters: true, // GraphQL `where`
+      filterBrowse: true, // GraphQL Get with where + offset
       browse: true,
       exportVectors: true,
       createCollection: true,
@@ -201,6 +202,9 @@ export class WeaviateConnector implements VectorConnector {
   }
 
   async listRecords(collection: string, opts: PageOpts): Promise<Page<VectorRecord>> {
+    // Filtered browse must go through GraphQL — REST /v1/objects can't filter.
+    if (opts.filter) return this.listFiltered(collection, opts);
+
     const params = new URLSearchParams({ class: collection, limit: String(opts.limit) });
     if (opts.withVectors) params.set("include", "vector");
     if (opts.cursor) params.set("after", opts.cursor);
@@ -210,6 +214,21 @@ export class WeaviateConnector implements VectorConnector {
     // Cursor pagination: `after` = last id; assume more pages while the page is full.
     const last = objects[objects.length - 1];
     const nextCursor = objects.length === opts.limit && last ? last.id : undefined;
+    return { items, nextCursor };
+  }
+
+  /** GraphQL Get with a where filter, paged by numeric offset (encoded as the cursor). */
+  private async listFiltered(collection: string, opts: PageOpts): Promise<Page<VectorRecord>> {
+    const meta = await this.classMeta(collection);
+    // A plain Get can't compute a distance/score, so select id (+vector) only.
+    const extra = ["id", ...(opts.withVectors ? ["vector"] : [])].join(" ");
+    const fields = `${meta.properties.join(" ")} _additional { ${extra} }`;
+    const offset = opts.cursor ? Number(opts.cursor) : 0;
+    const where = whereArg(opts.filter);
+    const gql = `{ Get { ${collection}(limit: ${opts.limit}, offset: ${offset}${where}) { ${fields} } } }`;
+    const hits = await this.runGet(collection, gql, {});
+    const items = hits.map((h) => this.hitToRecord(h, meta.properties));
+    const nextCursor = hits.length === opts.limit ? String(offset + opts.limit) : undefined;
     return { items, nextCursor };
   }
 
@@ -253,8 +272,9 @@ export class WeaviateConnector implements VectorConnector {
     // Only nearVector queries can compute `distance` — asking for it on a
     // keyword-only query has no vector to measure and Weaviate errors.
     const fields = this.selectionFields(meta.properties, "distance", query.withVectors ?? false);
+    const where = whereArg(query.filter);
     const gql = `query Search($vec: [Float!], $limit: Int) {
-      Get { ${collection}(nearVector: { vector: $vec }, limit: $limit) { ${fields} } }
+      Get { ${collection}(nearVector: { vector: $vec }, limit: $limit${where}) { ${fields} } }
     }`;
     const hits = await this.runGet(collection, gql, { vec: query.vector, limit: query.limit });
     return hits.map((h) => this.toSearchResult(h, meta.properties, "distance"));
@@ -265,18 +285,20 @@ export class WeaviateConnector implements VectorConnector {
     // bm25/hybrid report `score`, not `distance` — same reasoning as above.
     const fields = this.selectionFields(meta.properties, "score", false);
     const hasVector = query.mode === "hybrid" && query.vector !== undefined;
+    const alpha = query.alpha ?? 0.5;
     // Passing our own query vector lets hybrid genuinely blend keyword +
     // vector relevance even when the collection has no server-side vectorizer.
     // GraphQL rejects a declared-but-unused variable, so $vec only appears
     // in the operation signature when we actually reference it below.
     const args = hasVector
-      ? `hybrid: { query: $q, vector: $vec }`
+      ? `hybrid: { query: $q, vector: $vec, alpha: ${alpha} }`
       : query.mode === "hybrid"
-        ? `hybrid: { query: $q }`
+        ? `hybrid: { query: $q, alpha: ${alpha} }`
         : `bm25: { query: $q }`;
+    const where = whereArg(query.filter);
     const varsDecl = hasVector ? "$q: String!, $vec: [Float!], $limit: Int" : "$q: String!, $limit: Int";
     const gql = `query Search(${varsDecl}) {
-      Get { ${collection}(${args}, limit: $limit) { ${fields} } }
+      Get { ${collection}(${args}, limit: $limit${where}) { ${fields} } }
     }`;
     const variables: Record<string, unknown> = { q: query.text, limit: query.limit };
     if (hasVector) variables.vec = query.vector;
@@ -346,6 +368,17 @@ export class WeaviateConnector implements VectorConnector {
     return { id: o.id, payload: o.properties ?? {}, vector: o.vector };
   }
 
+  /** Build a plain record (no score) from a GraphQL Get hit — used by filtered browse. */
+  private hitToRecord(hit: GraphQLHit, properties: string[]): VectorRecord {
+    const add = hit._additional ?? {};
+    const payload: Record<string, Json> = {};
+    for (const p of properties) {
+      const v = hit[p];
+      if (v !== undefined) payload[p] = v as Json;
+    }
+    return { id: add.id ?? "", payload, vector: add.vector };
+  }
+
   private toSearchResult(hit: GraphQLHit, properties: string[], scoreKey: "distance" | "score"): SearchResult {
     const add = hit._additional ?? {};
     const payload: Record<string, Json> = {};
@@ -359,4 +392,31 @@ export class WeaviateConnector implements VectorConnector {
     else if (scoreKey === "score" && add.score !== undefined) score = parseFloat(add.score);
     return { id: add.id ?? "", score, payload, vector: add.vector };
   }
+}
+
+/** Render `, where: {literal}` for a GraphQL Get argument list, or "" when absent. */
+function whereArg(filter: Json | undefined): string {
+  if (filter === undefined || filter === null) return "";
+  return `, where: ${whereToLiteral(filter)}`;
+}
+
+/**
+ * Serialize a Weaviate `where` object (as produced by buildFilter) into GraphQL
+ * literal syntax. Weaviate needs enum values unquoted (`operator: Equal`) and
+ * object keys unquoted, which JSON.stringify can't produce — hence this walker.
+ */
+export function whereToLiteral(node: Json): string {
+  if (Array.isArray(node)) return `[${node.map((n) => whereToLiteral(n)).join(", ")}]`;
+  if (node === null || typeof node !== "object") return JSON.stringify(node);
+
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(node)) {
+    if (value === undefined) continue;
+    if (key === "operator" && typeof value === "string") {
+      parts.push(`${key}: ${value}`); // enum — unquoted
+    } else {
+      parts.push(`${key}: ${whereToLiteral(value as Json)}`);
+    }
+  }
+  return `{ ${parts.join(", ")} }`;
 }

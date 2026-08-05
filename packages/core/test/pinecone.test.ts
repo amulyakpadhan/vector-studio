@@ -59,6 +59,18 @@ test("dot metric maps to dotproduct on create", async () => {
   assert.equal(body.spec.serverless.cloud, "aws");
 });
 
+test("createCollection honors a custom cloud/region from options", async () => {
+  const calls = stubFetch({ "POST /indexes": {} });
+  await conn().createCollection({
+    name: "x",
+    dimension: 8,
+    metric: "cosine",
+    options: { cloud: "gcp", region: "us-central1" },
+  });
+  const body = JSON.parse((calls[0]?.init?.body as string) ?? "{}");
+  assert.deepEqual(body.spec.serverless, { cloud: "gcp", region: "us-central1" });
+});
+
 test("listRecords lists ids then fetches them from the index host", async () => {
   const calls = stubFetch({
     "GET /indexes/docs": INDEX,

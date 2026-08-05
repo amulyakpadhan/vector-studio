@@ -134,6 +134,7 @@ export class QdrantConnector implements VectorConnector {
       textSearch: false, // full-text needs a payload index; revisit with filter UI
       hybridSearch: false,
       payloadFilters: true,
+      filterBrowse: true,
       browse: true,
       exportVectors: true,
       createCollection: true,
@@ -215,6 +216,7 @@ export class QdrantConnector implements VectorConnector {
       {
         limit: opts.limit,
         offset: opts.cursor !== undefined ? decodeCursor(opts.cursor) : undefined,
+        filter: opts.filter,
         with_payload: true,
         with_vector: opts.withVectors ?? false,
       },
