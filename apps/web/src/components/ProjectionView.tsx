@@ -205,6 +205,7 @@ export function ProjectionView({ connector, collection }: Props) {
           overflow: "hidden",
           border: "1px solid var(--border)",
           background: "radial-gradient(circle at 50% 40%, #0c141c 0%, #070a0e 70%)",
+          boxShadow: "0 20px 50px -28px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.02) inset",
         }}
       >
         <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
@@ -227,8 +228,11 @@ export function ProjectionView({ connector, collection }: Props) {
         )}
         {phase.kind === "unsupported" && (
           <div style={overlayStyle}>
-            <div style={{ color: "var(--text-dim)", textAlign: "center", maxWidth: 380 }}>
-              This engine can’t export stored vectors, so projection isn’t available here yet.
+            <div style={{ textAlign: "center", maxWidth: 380 }}>
+              <div style={{ fontSize: 36, marginBottom: 10, opacity: 0.6 }}>◈</div>
+              <div style={{ color: "var(--text-dim)" }}>
+                This engine can’t export stored vectors, so projection isn’t available here yet.
+              </div>
             </div>
           </div>
         )}

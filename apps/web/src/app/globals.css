@@ -786,6 +786,68 @@ tbody tr:hover {
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
+
+/* ─── unified search bar ─────────────────────────────────── */
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  min-height: 46px;
+  background: linear-gradient(160deg, var(--bg-elev-2) 0%, var(--bg-elev) 70%);
+  border: 1px solid var(--border-bright);
+  border-radius: 12px;
+  margin-bottom: 14px;
+  box-shadow: 0 10px 26px -18px rgba(0, 0, 0, 0.6);
+  transition: border-color 0.15s, box-shadow 0.15s;
+  flex-wrap: wrap;
+}
+.search-bar:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.search-mode {
+  flex: none;
+  height: 44px;
+  width: 200px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 12px;
+  outline: none;
+}
+.search-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border-bright);
+}
+.search-input {
+  flex: 1;
+  min-width: 160px;
+  height: 44px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 14px;
+  padding: 0 14px;
+  outline: none;
+}
+.search-input::placeholder {
+  color: var(--text-faint);
+}
+.search-limit {
+  flex: none;
+  height: 44px;
+  width: 60px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+  outline: none;
+}
 .spinner {
   width: 16px;
   height: 16px;
