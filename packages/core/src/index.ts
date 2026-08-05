@@ -28,6 +28,7 @@ export {
   defaultModelFor,
   modelInfo,
   EMBEDDING_MODELS,
+  KEYLESS_PROVIDERS,
   type EmbeddingProvider,
   type EmbeddingConfig,
   type EmbeddingModelInfo,

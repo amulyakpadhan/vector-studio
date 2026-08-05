@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createConnector, EMBEDDING_MODELS, type DbEngine, type EmbeddingProvider } from "@vyn/core";
+import { createConnector, EMBEDDING_MODELS, KEYLESS_PROVIDERS, type DbEngine, type EmbeddingProvider } from "@vyn/core";
 import { useConnections, resolveEmbedding, toConfig, type SavedConnection } from "@/lib/store";
 import { useBridge, BRIDGE_URL } from "@/lib/bridge";
 import { useEscape } from "@/lib/useEscape";
 
-const EMBEDDING_PROVIDERS: { value: EmbeddingProvider; label: string }[] = [
+const EMBEDDING_PROVIDERS: { value: EmbeddingProvider; label: string; hint?: string }[] = [
   { value: "openai", label: "OpenAI" },
   { value: "cohere", label: "Cohere" },
   { value: "voyage", label: "Voyage AI" },
+  { value: "huggingface", label: "Hugging Face", hint: "Free serverless tier (rate-limited) — needs a free HF access token." },
+  { value: "ollama", label: "Ollama (local, free)", hint: "Runs on your own machine, no API key — needs a running local Ollama server." },
 ];
 
 const CUSTOM_MODEL = "__custom__";
@@ -104,6 +106,8 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
   );
   const [embedProvider, setEmbedProvider] = useState<EmbeddingProvider | "">(existingEmbedding?.provider ?? "");
   const [embedApiKey, setEmbedApiKey] = useState(existingEmbedding?.apiKey ?? "");
+  const [embedBaseUrl, setEmbedBaseUrl] = useState(existingEmbedding?.baseUrl ?? "");
+  const embedKeyless = embedProvider !== "" && KEYLESS_PROVIDERS.includes(embedProvider);
   const [embedModel, setEmbedModel] = useState<string>(
     existingEmbedding
       ? initModel
@@ -168,11 +172,12 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
       bridgeUrl,
       options: buildOptions(),
       embedding:
-        embedProvider && embedApiKey.trim()
+        embedProvider && (embedKeyless || embedApiKey.trim())
           ? {
               provider: embedProvider,
-              apiKey: embedApiKey.trim(),
+              apiKey: embedApiKey.trim() || undefined,
               model: (embedModel === CUSTOM_MODEL ? embedCustomModel.trim() : embedModel) || undefined,
+              baseUrl: embedKeyless ? embedBaseUrl.trim() || undefined : undefined,
             }
           : undefined,
       // Clear the legacy field once the connection is edited under the new model.
@@ -321,20 +326,42 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
               ? "Weaviate has its own server-side vectorizer when configured — this is only needed for classes that store raw vectors instead."
               : "Lets you search by phrase and import text records — Vyn embeds client-side and the key never leaves your machine."}
           </div>
+          {embedProvider && EMBEDDING_PROVIDERS.find((p) => p.value === embedProvider)?.hint && (
+            <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 4 }}>
+              {EMBEDDING_PROVIDERS.find((p) => p.value === embedProvider)!.hint}
+            </div>
+          )}
         </div>
 
         {embedProvider && (
           <>
-            <div className="field">
-              <label>{EMBEDDING_PROVIDERS.find((p) => p.value === embedProvider)!.label} API key</label>
-              <input
-                className="input"
-                type="password"
-                placeholder="••••••••"
-                value={embedApiKey}
-                onChange={(e) => setEmbedApiKey(e.target.value)}
-              />
-            </div>
+            {embedKeyless ? (
+              <div className="field">
+                <label>Ollama server URL (optional)</label>
+                <input
+                  className="input"
+                  placeholder="http://localhost:11434 (default)"
+                  value={embedBaseUrl}
+                  onChange={(e) => setEmbedBaseUrl(e.target.value)}
+                />
+                {(looksLocal(embedBaseUrl) || embedBaseUrl.trim() === "") && (
+                  <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 5 }}>
+                    Local server — turn on the bridge above if the studio can&apos;t reach it directly.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="field">
+                <label>{EMBEDDING_PROVIDERS.find((p) => p.value === embedProvider)!.label} API key</label>
+                <input
+                  className="input"
+                  type="password"
+                  placeholder="••••••••"
+                  value={embedApiKey}
+                  onChange={(e) => setEmbedApiKey(e.target.value)}
+                />
+              </div>
+            )}
             <div className="field">
               <label>Model</label>
               <select className="select" value={embedModel} onChange={(e) => setEmbedModel(e.target.value)}>

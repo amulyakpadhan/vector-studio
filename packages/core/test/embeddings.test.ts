@@ -95,3 +95,39 @@ test("embedText throws a ConnectorError when the provider returns nothing", asyn
     (e: Error) => e.name === "ConnectorError",
   );
 });
+
+test("embedText(huggingface) posts to the router's feature-extraction pipeline with a Bearer token", async () => {
+  const calls = stubFetch(() => [[0.1, 0.2, 0.3]]);
+  const vector = await embedText({ provider: "huggingface", apiKey: "hf_test" }, "hello world");
+  assert.deepEqual(vector, [0.1, 0.2, 0.3]);
+  assert.equal(
+    calls[0]!.url,
+    "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction",
+  );
+  assert.equal((calls[0]!.init!.headers as Record<string, string>)["Authorization"], "Bearer hf_test");
+  assert.deepEqual((calls[0]!.body as { inputs: string[] }).inputs, ["hello world"]);
+});
+
+test("huggingface requires an API key", async () => {
+  await assert.rejects(
+    () => embedText({ provider: "huggingface" }, "hi"),
+    (e: Error) => e.name === "ConnectorError" && /requires an API key/.test(e.message),
+  );
+});
+
+test("embedText(ollama) needs no API key and defaults to localhost:11434", async () => {
+  const calls = stubFetch(() => ({ embeddings: [[0.4, 0.5]] }));
+  const vector = await embedText({ provider: "ollama" }, "hello");
+  assert.deepEqual(vector, [0.4, 0.5]);
+  assert.equal(calls[0]!.url, "http://localhost:11434/api/embed");
+  assert.equal((calls[0]!.init!.headers as Record<string, string> | undefined)?.["Authorization"], undefined);
+  const body = calls[0]!.body as { model: string; input: string[] };
+  assert.equal(body.model, "nomic-embed-text");
+  assert.deepEqual(body.input, ["hello"]);
+});
+
+test("embedText(ollama) honors a custom baseUrl", async () => {
+  const calls = stubFetch(() => ({ embeddings: [[1]] }));
+  await embedText({ provider: "ollama", baseUrl: "http://192.168.1.50:11434/" }, "hi");
+  assert.equal(calls[0]!.url, "http://192.168.1.50:11434/api/embed");
+});
