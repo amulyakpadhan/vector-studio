@@ -337,6 +337,25 @@ textarea {
 .status.err .dot {
   background: var(--red);
 }
+.status.checking .dot {
+  background: var(--text-faint);
+  animation: pulse-dot 1.1s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  50% {
+    opacity: 0.3;
+  }
+}
+.health-btn {
+  background: transparent;
+  border: none;
+  padding: 4px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.health-btn:hover {
+  background: var(--bg-elev-2);
+}
 
 /* ─── forms ──────────────────────────────────────────────── */
 

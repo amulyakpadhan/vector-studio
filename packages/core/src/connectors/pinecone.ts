@@ -193,13 +193,13 @@ export class PineconeConnector implements VectorConnector {
   }
 
   async createCollection(spec: CreateCollectionSpec): Promise<void> {
-    // Default to a serverless index on AWS us-east-1; region/cloud become UI
-    // options once the create form grows engine-specific fields.
+    const cloud = str(spec.options?.["cloud"]) || "aws";
+    const region = str(spec.options?.["region"]) || "us-east-1";
     await this.control.post("/indexes", {
       name: spec.name,
       dimension: spec.dimension,
       metric: METRIC_TO_PINECONE[spec.metric],
-      spec: { serverless: { cloud: "aws", region: "us-east-1" } },
+      spec: { serverless: { cloud, region } },
     });
   }
 
@@ -322,4 +322,8 @@ export class PineconeConnector implements VectorConnector {
       vector: v.values,
     }));
   }
+}
+
+function str(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
 }

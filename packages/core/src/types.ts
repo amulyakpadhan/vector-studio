@@ -72,6 +72,8 @@ export interface CreateCollectionSpec {
   name: string;
   dimension: number;
   metric: DistanceMetric;
+  /** Engine-specific creation params (e.g. Pinecone serverless cloud/region). */
+  options?: Record<string, Json>;
 }
 
 /** One record: id + payload + (optionally) its vector. */

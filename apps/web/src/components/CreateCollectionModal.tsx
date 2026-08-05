@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { DistanceMetric, VectorConnector } from "@vyn/core";
+import { useEscape } from "@/lib/useEscape";
 
 interface Props {
   connector: VectorConnector;
@@ -12,21 +13,36 @@ interface Props {
 const METRICS: DistanceMetric[] = ["cosine", "euclidean", "dot"];
 const COMMON_DIMS = [384, 768, 1536, 3072];
 
+const PINECONE_CLOUDS = ["aws", "gcp", "azure"] as const;
+const PINECONE_REGIONS: Record<(typeof PINECONE_CLOUDS)[number], string[]> = {
+  aws: ["us-east-1", "us-west-2", "eu-west-1"],
+  gcp: ["us-central1"],
+  azure: ["eastus2"],
+};
+
+/** Engines whose connector infers the vector dimension from the first insert. */
+const DIMENSION_INFERRED = new Set(["weaviate", "chroma"]);
+
 export function CreateCollectionModal({ connector, onClose, onCreated }: Props) {
+  const caps = connector.capabilities();
   const [name, setName] = useState("");
   const [dimension, setDimension] = useState(1536);
   const [metric, setMetric] = useState<DistanceMetric>("cosine");
+  const [cloud, setCloud] = useState<(typeof PINECONE_CLOUDS)[number]>("aws");
+  const [region, setRegion] = useState(PINECONE_REGIONS.aws[0]!);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEscape(onClose);
 
-  const caps = connector.capabilities();
-  const canCreate = caps.createCollection && name.trim() !== "" && dimension > 0;
+  const dimensionInferred = DIMENSION_INFERRED.has(caps.engine);
+  const canCreate = caps.createCollection && name.trim() !== "" && (dimensionInferred || dimension > 0);
 
   async function create() {
     setBusy(true);
     setError(null);
     try {
-      await connector.createCollection({ name: name.trim(), dimension, metric });
+      const options = caps.engine === "pinecone" ? { cloud, region } : undefined;
+      await connector.createCollection({ name: name.trim(), dimension, metric, options });
       onCreated(name.trim());
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -62,7 +78,7 @@ export function CreateCollectionModal({ connector, onClose, onCreated }: Props) 
 
         <div className="row2">
           <div className="field">
-            <label>Dimension</label>
+            <label>Dimension {dimensionInferred ? "(optional)" : ""}</label>
             <input
               className="input"
               type="number"
@@ -76,6 +92,11 @@ export function CreateCollectionModal({ connector, onClose, onCreated }: Props) 
                 <option key={d} value={d} />
               ))}
             </datalist>
+            {dimensionInferred && (
+              <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 6 }}>
+                {caps.engine === "weaviate" ? "Weaviate" : "Chroma"} infers the dimension from your first insert.
+              </div>
+            )}
           </div>
           <div className="field">
             <label>Distance metric</label>
@@ -88,6 +109,39 @@ export function CreateCollectionModal({ connector, onClose, onCreated }: Props) 
             </select>
           </div>
         </div>
+
+        {caps.engine === "pinecone" && (
+          <div className="row2">
+            <div className="field">
+              <label>Cloud</label>
+              <select
+                className="select"
+                value={cloud}
+                onChange={(e) => {
+                  const next = e.target.value as (typeof PINECONE_CLOUDS)[number];
+                  setCloud(next);
+                  setRegion(PINECONE_REGIONS[next][0]!);
+                }}
+              >
+                {PINECONE_CLOUDS.map((c) => (
+                  <option key={c} value={c}>
+                    {c.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>Region</label>
+              <select className="select" value={region} onChange={(e) => setRegion(e.target.value)}>
+                {PINECONE_REGIONS[cloud].map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
 
         <div className="modal-foot">
           <button className="btn ghost" onClick={onClose} disabled={busy}>
