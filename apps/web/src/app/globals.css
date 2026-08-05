@@ -112,6 +112,7 @@ textarea {
   position: sticky;
   top: 0;
   z-index: 10;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 8px 24px -16px rgba(0, 0, 0, 0.5);
 }
 
 .brand {
@@ -242,23 +243,52 @@ textarea {
 }
 
 .card {
-  background: var(--bg-elev);
+  position: relative;
+  background: linear-gradient(160deg, var(--bg-elev-2) 0%, var(--bg-elev) 55%);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 18px;
-  transition: border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset, 0 12px 28px -20px rgba(0, 0, 0, 0.6);
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
 .card.link:hover {
   border-color: var(--accent);
   transform: translateY(-3px);
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--accent-glow);
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--accent-glow), 0 0 32px -8px var(--accent-glow);
 }
 
 .card-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
+}
+.avatar {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 15px;
+  color: #04140f;
+  background: var(--grad);
+}
+.avatar-qdrant {
+  background: linear-gradient(135deg, var(--red), #ffb199);
+}
+.avatar-pinecone {
+  background: linear-gradient(135deg, var(--cyan), #7ad9ff);
+}
+.avatar-weaviate {
+  background: linear-gradient(135deg, var(--green), #a4f5d8);
+}
+.avatar-milvus {
+  background: linear-gradient(135deg, var(--accent), var(--violet));
+}
+.avatar-chroma {
+  background: linear-gradient(135deg, var(--amber), #ffe1a8);
 }
 .card-name {
   font-weight: 600;
@@ -284,35 +314,42 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 9px;
+  padding: 3px 9px 3px 7px;
   border-radius: 999px;
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  border: 1px solid var(--border-bright);
-  color: var(--text-dim);
+  border: 1px solid var(--badge-c, var(--border-bright));
+  background: var(--badge-bg, transparent);
+  color: var(--badge-c, var(--text-dim));
 }
 .badge .dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--text-faint);
+  background: var(--badge-c, var(--text-faint));
+  box-shadow: 0 0 6px var(--badge-c, transparent);
 }
-.badge.qdrant .dot {
-  background: var(--red);
+.badge.qdrant {
+  --badge-c: var(--red);
+  --badge-bg: rgba(255, 107, 138, 0.1);
 }
-.badge.pinecone .dot {
-  background: var(--cyan);
+.badge.pinecone {
+  --badge-c: var(--cyan);
+  --badge-bg: rgba(55, 182, 255, 0.1);
 }
-.badge.weaviate .dot {
-  background: var(--green);
+.badge.weaviate {
+  --badge-c: var(--green);
+  --badge-bg: rgba(47, 211, 154, 0.1);
 }
-.badge.milvus .dot {
-  background: var(--accent-bright);
+.badge.milvus {
+  --badge-c: var(--accent-bright);
+  --badge-bg: rgba(75, 240, 216, 0.1);
 }
-.badge.chroma .dot {
-  background: var(--amber);
+.badge.chroma {
+  --badge-c: var(--amber);
+  --badge-bg: rgba(255, 188, 92, 0.1);
 }
 
 .status {
@@ -497,8 +534,8 @@ tbody tr:hover {
 }
 .sidebar {
   border-right: 1px solid var(--border);
-  background: var(--bg-elev);
-  padding: 16px 12px;
+  background: linear-gradient(180deg, var(--bg-elev) 0%, var(--bg) 130%);
+  padding: 16px 10px;
   overflow-y: auto;
 }
 .sidebar-label {
@@ -510,32 +547,131 @@ tbody tr:hover {
   font-weight: 600;
 }
 .nav-item {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 10px;
+  padding: 8px 10px 8px 14px;
+  margin: 1px 0;
   border-radius: 8px;
   color: var(--text-dim);
   font-size: 13.5px;
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
+.nav-item::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%) scaleY(0);
+  width: 3px;
+  height: 16px;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: transform 0.15s;
+}
 .nav-item:hover {
   background: var(--bg-elev-2);
   color: var(--text);
+}
+.nav-item.open {
+  color: var(--text);
+  background: var(--bg-elev-2);
 }
 .nav-item.active {
   background: var(--accent-glow);
   color: var(--text);
 }
+.nav-item.active::before {
+  transform: translateY(-50%) scaleY(1);
+}
 .nav-item .count {
   font-family: var(--mono);
   font-size: 11px;
   color: var(--text-faint);
+  flex: none;
 }
 .main {
-  padding: 22px 24px;
+  padding: 22px 24px 24px;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ─── document tab strip (open collections, VS Code / Compass style) ────── */
+
+.doctabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  margin: -22px -24px 18px;
+  padding: 12px 24px 0;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent);
+}
+.doctab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 8px 10px 8px 14px;
+  border-radius: 10px 10px 0 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  max-width: 220px;
+  transition: background 0.12s, color 0.12s;
+}
+.doctab:hover {
+  color: var(--text);
+  background: var(--bg-elev-2);
+}
+.doctab.active {
+  color: var(--text);
+  background: var(--bg-elev);
+  border-color: var(--border);
+  border-bottom-color: var(--bg-elev);
+}
+.doctab.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+}
+.doctab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doctab-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.doctab:hover .doctab-close,
+.doctab.active .doctab-close {
+  opacity: 1;
+}
+.doctab-close:hover {
+  background: var(--border-bright);
+  color: var(--text);
 }
 
 /* ─── tabs ───────────────────────────────────────────────── */
