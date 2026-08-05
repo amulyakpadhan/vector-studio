@@ -212,3 +212,18 @@ test("GraphQL errors surface as ConnectorError", async () => {
     (e: Error) => e.name === "ConnectorError" && /boom/.test(e.message),
   );
 });
+
+test("a server-side 'interface conversion' panic gets an explanatory hint appended", async () => {
+  stubFetch((method, path) => {
+    if (path === "/v1/schema/Docs") return DOCS_CLASS;
+    if (path === "/v1/graphql") return { errors: [{ message: "interface conversion: interface {} is int64, not int" }] };
+    return {};
+  });
+  await assert.rejects(
+    () => conn().textSearch("Docs", { text: "hi", mode: "keyword", limit: 3 }),
+    (e: Error) =>
+      e.name === "ConnectorError" &&
+      /interface conversion/.test(e.message) &&
+      /Weaviate server-side crash, not a Vyn bug/.test(e.message),
+  );
+});

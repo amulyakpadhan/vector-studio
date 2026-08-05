@@ -19,6 +19,8 @@ export function Studio({ connectionId }: { connectionId: string }) {
   const [active, setActive] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [collFilter, setCollFilter] = useState("");
+  const [dragTab, setDragTab] = useState<string | null>(null);
+  const [dragOverTab, setDragOverTab] = useState<string | null>(null);
 
   useEffect(() => setHydrated(true), []);
 
@@ -43,6 +45,19 @@ export function Studio({ connectionId }: { connectionId: string }) {
         // Focus the tab that was to its right, or its new left neighbor if it was last.
         setActive(next[idx] ?? next[idx - 1] ?? null);
       }
+      return next;
+    });
+  }
+
+  function reorderTabs(dragged: string, target: string) {
+    if (dragged === target) return;
+    setOpenTabs((tabs) => {
+      const from = tabs.indexOf(dragged);
+      const to = tabs.indexOf(target);
+      if (from === -1 || to === -1) return tabs;
+      const next = [...tabs];
+      next.splice(from, 1);
+      next.splice(to, 0, dragged);
       return next;
     });
   }
@@ -135,9 +150,28 @@ export function Studio({ connectionId }: { connectionId: string }) {
               {openTabs.map((name) => (
                 <div
                   key={name}
-                  className={`doctab ${active === name ? "active" : ""}`}
+                  className={`doctab ${active === name ? "active" : ""} ${dragOverTab === name && dragTab !== name ? "drag-over" : ""} ${dragTab === name ? "dragging" : ""}`}
                   onClick={() => setActive(name)}
                   title={name}
+                  draggable
+                  onDragStart={(e) => {
+                    setDragTab(name);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragEnter={() => {
+                    if (dragTab && dragTab !== name) setDragOverTab(name);
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (dragTab) reorderTabs(dragTab, name);
+                    setDragTab(null);
+                    setDragOverTab(null);
+                  }}
+                  onDragEnd={() => {
+                    setDragTab(null);
+                    setDragOverTab(null);
+                  }}
                 >
                   <span className="doctab-name">{name}</span>
                   <span

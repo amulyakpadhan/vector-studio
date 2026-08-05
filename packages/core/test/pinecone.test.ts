@@ -226,3 +226,80 @@ test("searchByText uses the configured namespace instead of 'default' when one i
   await c.searchByText("docs", { text: "x", limit: 1 });
   assert.ok(calls.some((call) => call.url.includes("/records/namespaces/prod/search")));
 });
+
+// ─── sparse vectors ─────────────────────────────────────────────────────────
+
+test("upsertRecords sends sparseValues alongside dense values", async () => {
+  const calls = stubFetch({
+    "GET /indexes/docs": INDEX,
+    "POST /vectors/upsert": { upsertedCount: 1 },
+  });
+  await conn().upsertRecords("docs", [
+    {
+      id: "rec1",
+      vector: [0.1, 0.2],
+      sparseVector: { indices: [3, 91], values: [0.5, 0.25] },
+      payload: { title: "hybrid" },
+    },
+  ]);
+  const call = calls.find((c) => c.url.includes("/vectors/upsert"))!;
+  const body = JSON.parse(call.init!.body as string);
+  assert.deepEqual(body.vectors[0], {
+    id: "rec1",
+    values: [0.1, 0.2],
+    sparseValues: { indices: [3, 91], values: [0.5, 0.25] },
+    metadata: { title: "hybrid" },
+  });
+});
+
+test("upsertRecords treats a sparse-only record as vector-bearing (no server embedding required)", async () => {
+  const calls = stubFetch({
+    "GET /indexes/docs": INDEX,
+    "POST /vectors/upsert": { upsertedCount: 1 },
+  });
+  const res = await conn().upsertRecords("docs", [
+    { id: "rec1", sparseVector: { indices: [1, 2], values: [0.9, 0.1] }, payload: { title: "sparse only" } },
+  ]);
+  assert.equal(res.upserted, 1);
+  const call = calls.find((c) => c.url.includes("/vectors/upsert"))!;
+  const body = JSON.parse(call.init!.body as string);
+  assert.deepEqual(body.vectors[0], {
+    id: "rec1",
+    sparseValues: { indices: [1, 2], values: [0.9, 0.1] },
+    metadata: { title: "sparse only" },
+  });
+  assert.ok(!("values" in body.vectors[0]));
+});
+
+test("vectorSearch sends sparseVector for dense+sparse hybrid queries and maps it back on hits", async () => {
+  const calls = stubFetch({
+    "GET /indexes/docs": INDEX,
+    "POST /query": {
+      matches: [{ id: "a", score: 0.9, metadata: { t: "x" }, sparseValues: { indices: [4], values: [0.7] } }],
+    },
+  });
+  const hits = await conn().vectorSearch("docs", {
+    vector: [0.1, 0.2],
+    sparseVector: { indices: [4], values: [0.7] },
+    limit: 3,
+  });
+  assert.deepEqual(hits, [
+    { id: "a", score: 0.9, payload: { t: "x" }, vector: undefined, sparseVector: { indices: [4], values: [0.7] } },
+  ]);
+  const call = calls.find((c) => c.url.includes("/query"))!;
+  const body = JSON.parse(call.init!.body as string);
+  assert.deepEqual(body.sparseVector, { indices: [4], values: [0.7] });
+  assert.deepEqual(body.vector, [0.1, 0.2]);
+});
+
+test("vectorSearch omits `vector` entirely for a sparse-only query", async () => {
+  const calls = stubFetch({
+    "GET /indexes/docs": INDEX,
+    "POST /query": { matches: [] },
+  });
+  await conn().vectorSearch("docs", { vector: [], sparseVector: { indices: [1], values: [1] }, limit: 5 });
+  const call = calls.find((c) => c.url.includes("/query"))!;
+  const body = JSON.parse(call.init!.body as string);
+  assert.ok(!("vector" in body));
+  assert.deepEqual(body.sparseVector, { indices: [1], values: [1] });
+});

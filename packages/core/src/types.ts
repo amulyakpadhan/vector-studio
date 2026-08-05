@@ -90,11 +90,22 @@ export interface CreateCollectionSpec {
   options?: Record<string, Json>;
 }
 
-/** One record: id + payload + (optionally) its vector. */
+/**
+ * A sparse vector: parallel arrays of non-zero dimension indices and their
+ * values (e.g. from a SPLADE-style sparse embedding model). Only Pinecone
+ * supports these today, and only on indexes created with the "dot" metric.
+ */
+export interface SparseVector {
+  indices: number[];
+  values: number[];
+}
+
+/** One record: id + payload + (optionally) its dense and/or sparse vector. */
 export interface VectorRecord {
   id: string | number;
   payload: Record<string, Json>;
   vector?: number[];
+  sparseVector?: SparseVector;
 }
 
 export interface PageOpts {
@@ -125,6 +136,8 @@ export interface VectorQuery {
   /** Engine-native filter object, passed through untouched. */
   filter?: Json;
   withVectors?: boolean;
+  /** Combine with a sparse vector for dense+sparse hybrid scoring (Pinecone only). */
+  sparseVector?: SparseVector;
 }
 
 export interface TextQuery {
@@ -144,6 +157,7 @@ export interface SearchResult {
   score: number;
   payload: Record<string, Json>;
   vector?: number[];
+  sparseVector?: SparseVector;
 }
 
 export interface SampleOpts {
@@ -174,4 +188,6 @@ export interface ConnectorCapabilities {
   exportVectors: boolean;
   createCollection: boolean;
   updatePayload: boolean;
+  /** Supports sparse vectors (indices+values) alongside/instead of a dense one, for dense+sparse hybrid scoring. */
+  sparseVectors?: boolean;
 }

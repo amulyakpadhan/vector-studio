@@ -76,9 +76,15 @@ interface PineconeStats {
   totalVectorCount?: number;
 }
 
+interface PineconeSparseValues {
+  indices: number[];
+  values: number[];
+}
+
 interface PineconeVector {
   id: string;
   values?: number[];
+  sparseValues?: PineconeSparseValues;
   metadata?: Record<string, Json>;
 }
 
@@ -93,7 +99,13 @@ interface PineconeFetchResult {
 }
 
 interface PineconeQueryResult {
-  matches: { id: string; score: number; values?: number[]; metadata?: Record<string, Json> }[];
+  matches: {
+    id: string;
+    score: number;
+    values?: number[];
+    sparseValues?: PineconeSparseValues;
+    metadata?: Record<string, Json>;
+  }[];
 }
 
 interface PineconeSearchRecordsResult {
@@ -139,7 +151,7 @@ export class PineconeConnector implements VectorConnector {
   capabilities(): ConnectorCapabilities {
     return {
       engine: "pinecone",
-      textSearch: false, // sparse/hybrid is advanced; revisit later
+      textSearch: false, // no BM25/keyword endpoint — sparse vectors are the analogue
       hybridSearch: false,
       payloadFilters: true, // metadata filters on query
       filterBrowse: false, // /vectors/list has no metadata filter — search only
@@ -147,6 +159,7 @@ export class PineconeConnector implements VectorConnector {
       exportVectors: true,
       createCollection: true,
       updatePayload: true, // via /update setMetadata
+      sparseVectors: true, // dense+sparse hybrid via /query's sparseVector — index metric must be "dot"
     };
   }
 
@@ -258,8 +271,10 @@ export class PineconeConnector implements VectorConnector {
   }
 
   async upsertRecords(collection: string, records: VectorRecord[]): Promise<UpsertResult> {
-    const withVector = records.filter((r) => r.vector && r.vector.length > 0);
-    const textOnly = records.filter((r) => !(r.vector && r.vector.length > 0));
+    const hasVector = (r: VectorRecord) =>
+      (r.vector && r.vector.length > 0) || (r.sparseVector && r.sparseVector.indices.length > 0);
+    const withVector = records.filter(hasVector);
+    const textOnly = records.filter((r) => !hasVector(r));
 
     let upserted = 0;
 
@@ -268,7 +283,8 @@ export class PineconeConnector implements VectorConnector {
       const res = await data.post<{ upsertedCount?: number }>("/vectors/upsert", {
         vectors: withVector.map((r) => ({
           id: String(r.id),
-          values: r.vector,
+          ...(r.vector && r.vector.length > 0 ? { values: r.vector } : {}),
+          ...(r.sparseVector ? { sparseValues: r.sparseVector } : {}),
           metadata: r.payload,
         })),
         ...this.ns(),
@@ -329,7 +345,8 @@ export class PineconeConnector implements VectorConnector {
   async vectorSearch(collection: string, query: VectorQuery): Promise<SearchResult[]> {
     const data = await this.dataClient(collection);
     const res = await data.post<PineconeQueryResult>("/query", {
-      vector: query.vector,
+      ...(query.vector.length > 0 ? { vector: query.vector } : {}),
+      ...(query.sparseVector ? { sparseVector: query.sparseVector } : {}),
       topK: query.limit,
       filter: query.filter,
       includeMetadata: true,
@@ -341,6 +358,7 @@ export class PineconeConnector implements VectorConnector {
       score: m.score,
       payload: m.metadata ?? {},
       vector: m.values,
+      ...(m.sparseValues ? { sparseVector: m.sparseValues } : {}),
     }));
   }
 
@@ -421,6 +439,7 @@ export class PineconeConnector implements VectorConnector {
       id: v.id,
       payload: v.metadata ?? {},
       vector: v.values,
+      ...(v.sparseValues ? { sparseVector: v.sparseValues } : {}),
     }));
   }
 }

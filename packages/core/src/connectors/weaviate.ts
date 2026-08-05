@@ -359,7 +359,7 @@ export class WeaviateConnector implements VectorConnector {
   ): Promise<GraphQLHit[]> {
     const res = await this.http.post<GraphQLResponse>("/v1/graphql", { query, variables });
     if (res.errors && res.errors.length) {
-      throw new ConnectorError(res.errors.map((e) => e.message).join("; "), "weaviate");
+      throw new ConnectorError(explainGraphQLError(res.errors.map((e) => e.message).join("; ")), "weaviate");
     }
     return res.data?.Get?.[collection] ?? [];
   }
@@ -368,7 +368,7 @@ export class WeaviateConnector implements VectorConnector {
     const gql = `{ Aggregate { ${collection} { meta { count } } } }`;
     const res = await this.http.post<GraphQLResponse>("/v1/graphql", { query: gql });
     if (res.errors && res.errors.length) {
-      throw new ConnectorError(res.errors.map((e) => e.message).join("; "), "weaviate");
+      throw new ConnectorError(explainGraphQLError(res.errors.map((e) => e.message).join("; ")), "weaviate");
     }
     return res.data?.Aggregate?.[collection]?.[0]?.meta?.count ?? 0;
   }
@@ -401,6 +401,24 @@ export class WeaviateConnector implements VectorConnector {
     else if (scoreKey === "score" && add.score !== undefined) score = parseFloat(add.score);
     return { id: add.id ?? "", score, payload, vector: add.vector };
   }
+}
+
+/**
+ * Weaviate occasionally recovers from an internal Go panic and returns its
+ * raw message as a GraphQL error (e.g. "interface conversion: interface {}
+ * is int64, not int") — this is a server-side crash, not something a client
+ * request can cause or fix. It's a documented GraphQL/Weaviate limitation:
+ * GraphQL only supports int32, so an indexed `int` property holding a value
+ * that doesn't fit int32 can crash the resolver when it's returned. Append a
+ * hint so this doesn't read like an opaque client bug.
+ */
+function explainGraphQLError(message: string): string {
+  if (!/interface conversion/i.test(message)) return message;
+  return (
+    `${message} — this is a Weaviate server-side crash, not a Vyn bug. It usually means one of this class's ` +
+    `indexed "int" properties holds a value too large for GraphQL's int32 limit. Check that property's values, ` +
+    `consider changing its dataType to "number", or try a newer Weaviate version.`
+  );
 }
 
 /** Render `, where: {literal}` for a GraphQL Get argument list, or "" when absent. */

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { DistanceMetric, VectorConnector } from "@vyn/core";
 import { useEscape } from "@/lib/useEscape";
+import { checkCollectionName } from "@/lib/collectionName";
 
 interface Props {
   connector: VectorConnector;
@@ -42,9 +43,11 @@ export function CreateCollectionModal({ connector, onClose, onCreated }: Props) 
   const isPinecone = caps.engine === "pinecone";
   const useIntegrated = isPinecone && integrated;
   const dimensionInferred = DIMENSION_INFERRED.has(caps.engine) || useIntegrated;
+  const nameCheck = useMemo(() => checkCollectionName(caps.engine, name), [caps.engine, name]);
   const canCreate =
     caps.createCollection &&
     name.trim() !== "" &&
+    !nameCheck.error &&
     (dimensionInferred || dimension > 0) &&
     (!useIntegrated || embedField.trim() !== "");
 
@@ -59,8 +62,8 @@ export function CreateCollectionModal({ connector, onClose, onCreated }: Props) 
             ...(useIntegrated ? { embedModel, embedField: embedField.trim() } : {}),
           } as Record<string, string>)
         : undefined;
-      await connector.createCollection({ name: name.trim(), dimension, metric, options });
-      onCreated(name.trim());
+      await connector.createCollection({ name: nameCheck.value, dimension, metric, options });
+      onCreated(nameCheck.value);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setBusy(false);
@@ -91,6 +94,12 @@ export function CreateCollectionModal({ connector, onClose, onCreated }: Props) 
             onChange={(e) => setName(e.target.value)}
             autoFocus
           />
+          {name.trim() !== "" && nameCheck.error && (
+            <div style={{ color: "var(--red)", fontSize: 12, marginTop: 6 }}>{nameCheck.error}</div>
+          )}
+          {name.trim() !== "" && !nameCheck.error && nameCheck.note && (
+            <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 6 }}>{nameCheck.note}</div>
+          )}
         </div>
 
         {isPinecone && (
@@ -142,6 +151,12 @@ export function CreateCollectionModal({ connector, onClose, onCreated }: Props) 
                   </option>
                 ))}
               </select>
+              {isPinecone && caps.sparseVectors && (
+                <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 6 }}>
+                  Planning to use sparse or dense+sparse hybrid vectors? Pick <strong>dot</strong> — Pinecone only
+                  supports sparse values on dot-product indexes.
+                </div>
+              )}
             </div>
           </div>
         )}
