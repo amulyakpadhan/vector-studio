@@ -84,6 +84,8 @@ export function SearchView({ connector, conn, collection, dimension, serverVecto
     return [...keys].slice(0, 6);
   }, [results]);
 
+  const topScore = useMemo(() => Math.max(1e-9, ...(results ?? []).map((r) => Math.abs(r.score))), [results]);
+
   async function embedQuery(): Promise<number[]> {
     if (!embedding) throw new Error("Add an embedding provider on this connection first.");
     if (!effectiveModel) throw new Error("Pick a model or enter a custom one.");
@@ -142,8 +144,8 @@ export function SearchView({ connector, conn, collection, dimension, serverVecto
 
   return (
     <div>
-      <div className="toolbar">
-        <select className="select" style={{ width: 190 }} value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
+      <div className="search-bar">
+        <select className="search-mode" value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
           {modes.map((m) => (
             <option key={m} value={m}>
               {MODE_LABELS[m]}
@@ -151,48 +153,50 @@ export function SearchView({ connector, conn, collection, dimension, serverVecto
           ))}
         </select>
 
+        <span className="search-divider" />
+
         {(mode === "keyword" || mode === "hybrid" || mode === "semantic") && (
           <input
-            className="input"
-            style={{ flex: 1, minWidth: 220 }}
+            className="search-input"
             placeholder="Search text…"
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && run()}
+            autoFocus
           />
         )}
         {mode === "similar" && (
           <input
-            className="input"
-            style={{ flex: 1, minWidth: 220 }}
+            className="search-input"
             placeholder="Record ID to find neighbors of…"
             value={recordId}
             onChange={(e) => setRecordId(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && run()}
+            autoFocus
           />
         )}
         {mode === "vector" && (
           <input
-            className="input"
-            style={{ flex: 1, minWidth: 220, fontFamily: "var(--mono)", fontSize: 12.5 }}
+            className="search-input"
+            style={{ fontFamily: "var(--mono)", fontSize: 12.5 }}
             placeholder="[0.12, -0.03, …]"
             value={vectorText}
             onChange={(e) => setVectorText(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && run()}
+            autoFocus
           />
         )}
 
         <input
-          className="input"
+          className="search-limit"
           type="number"
           min={1}
           max={100}
           value={limit}
           onChange={(e) => setLimit(Math.max(1, Math.min(100, Number(e.target.value))))}
-          style={{ width: 80 }}
           title="Result limit"
         />
-        <button className="btn primary" onClick={run} disabled={busy}>
+        <button className="btn primary" onClick={run} disabled={busy} style={{ margin: 4 }}>
           {busy ? <span className="spinner" /> : "Search"}
         </button>
       </div>
@@ -303,12 +307,12 @@ export function SearchView({ connector, conn, collection, dimension, serverVecto
 
       {error && <div className="banner err">{error}</div>}
 
-      {results && (
+      {results ? (
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th style={{ width: 90 }}>Score</th>
+                <th style={{ width: 120 }}>Score</th>
                 <th style={{ width: 140 }}>ID</th>
                 {columns.map((c) => (
                   <th key={c}>{c}</th>
@@ -330,8 +334,8 @@ export function SearchView({ connector, conn, collection, dimension, serverVecto
                   style={{ cursor: "pointer" }}
                   onClick={() => setInspect({ id: r.id, payload: r.payload, vector: r.vector })}
                 >
-                  <td className="cell-mono" style={{ color: "var(--accent-bright)" }}>
-                    {r.score.toFixed(4)}
+                  <td className="cell-mono">
+                    <ScoreBar score={r.score} max={topScore} />
                   </td>
                   <td className="cell-id">
                     <span className="truncate">{String(r.id)}</span>
@@ -350,6 +354,11 @@ export function SearchView({ connector, conn, collection, dimension, serverVecto
               ))}
             </tbody>
           </table>
+        </div>
+      ) : (
+        <div className="empty" style={{ padding: "48px 20px" }}>
+          <div className="big">⌕</div>
+          <p>Run a search to see results here.</p>
         </div>
       )}
 
@@ -381,6 +390,35 @@ function parseVector(raw: string): number[] {
   }
   if (arr.length === 0) throw new Error("Vector is empty.");
   return arr as number[];
+}
+
+function ScoreBar({ score, max }: { score: number; max: number }) {
+  const pct = Math.max(2, Math.min(100, (Math.abs(score) / max) * 100));
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span style={{ color: "var(--accent-bright)", minWidth: 46 }}>{score.toFixed(4)}</span>
+      <span
+        style={{
+          flex: 1,
+          height: 4,
+          borderRadius: 2,
+          background: "var(--border)",
+          overflow: "hidden",
+          minWidth: 32,
+        }}
+      >
+        <span
+          style={{
+            display: "block",
+            height: "100%",
+            width: `${pct}%`,
+            background: "var(--grad)",
+            borderRadius: 2,
+          }}
+        />
+      </span>
+    </div>
+  );
 }
 
 function renderCell(v: Json | undefined): string {

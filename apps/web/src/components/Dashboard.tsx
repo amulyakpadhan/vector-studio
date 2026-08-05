@@ -44,6 +44,7 @@ export function Dashboard() {
           {connections.map((c, i) => (
             <div key={c.id} className="card link card-in" style={{ "--i": i } as React.CSSProperties}>
               <div className="card-top">
+                <div className={`avatar avatar-${c.engine}`}>{c.name.trim().charAt(0).toUpperCase() || "?"}</div>
                 <Link href={`/studio/${c.id}`} style={{ minWidth: 0, flex: 1 }}>
                   <div className="card-name">{c.name}</div>
                   <div className="card-meta">
@@ -55,8 +56,10 @@ export function Dashboard() {
                 </Link>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
                   <ConnectionHealth conn={c} />
-                  <EngineBadge engine={c.engine} />
                 </div>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <EngineBadge engine={c.engine} />
               </div>
               <div className="card-foot">
                 <Link href={`/studio/${c.id}`} className="btn sm">

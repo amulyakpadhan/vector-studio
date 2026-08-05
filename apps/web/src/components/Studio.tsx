@@ -14,7 +14,9 @@ import { CreateCollectionModal } from "./CreateCollectionModal";
 export function Studio({ connectionId }: { connectionId: string }) {
   const conn = useConnections((s) => s.get(connectionId));
   const [hydrated, setHydrated] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
+  // Open collections, tab-strip style — order is the tab order, last opened wins focus.
+  const [openTabs, setOpenTabs] = useState<string[]>([]);
+  const [active, setActive] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [collFilter, setCollFilter] = useState("");
 
@@ -28,12 +30,30 @@ export function Studio({ connectionId }: { connectionId: string }) {
     queryFn: () => connector!.listCollections(),
   });
 
-  // Auto-select the first collection once loaded.
+  function openCollection(name: string) {
+    setOpenTabs((tabs) => (tabs.includes(name) ? tabs : [...tabs, name]));
+    setActive(name);
+  }
+
+  function closeTab(name: string) {
+    setOpenTabs((tabs) => {
+      const idx = tabs.indexOf(name);
+      const next = tabs.filter((t) => t !== name);
+      if (active === name) {
+        // Focus the tab that was to its right, or its new left neighbor if it was last.
+        setActive(next[idx] ?? next[idx - 1] ?? null);
+      }
+      return next;
+    });
+  }
+
+  // Auto-open the first collection once loaded.
   useEffect(() => {
-    if (selected === null && collections.data && collections.data.length > 0) {
-      setSelected(collections.data[0]!.name);
+    if (openTabs.length === 0 && collections.data && collections.data.length > 0) {
+      openCollection(collections.data[0]!.name);
     }
-  }, [collections.data, selected]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collections.data]);
 
   if (hydrated && !conn) {
     return (
@@ -100,8 +120,8 @@ export function Studio({ connectionId }: { connectionId: string }) {
             .map((c: CollectionInfo) => (
               <div
                 key={c.name}
-                className={`nav-item ${selected === c.name ? "active" : ""}`}
-                onClick={() => setSelected(c.name)}
+                className={`nav-item ${active === c.name ? "active" : openTabs.includes(c.name) ? "open" : ""}`}
+                onClick={() => openCollection(c.name)}
               >
                 <span className="truncate">{c.name}</span>
                 {c.count != null && <span className="count">{c.count.toLocaleString()}</span>}
@@ -110,13 +130,39 @@ export function Studio({ connectionId }: { connectionId: string }) {
         </aside>
 
         <section className="main">
-          {selected && connector ? (
+          {openTabs.length > 0 && (
+            <div className="doctabs">
+              {openTabs.map((name) => (
+                <div
+                  key={name}
+                  className={`doctab ${active === name ? "active" : ""}`}
+                  onClick={() => setActive(name)}
+                  title={name}
+                >
+                  <span className="doctab-name">{name}</span>
+                  <span
+                    className="doctab-close"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeTab(name);
+                    }}
+                    title="Close tab"
+                  >
+                    ✕
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {active && connector ? (
             <CollectionView
+              key={active}
               connector={connector}
               connectionId={connectionId}
-              collection={selected}
+              collection={active}
               onDeleted={() => {
-                setSelected(null);
+                closeTab(active);
                 collections.refetch();
               }}
             />
@@ -136,7 +182,7 @@ export function Studio({ connectionId }: { connectionId: string }) {
           onCreated={(name) => {
             setShowCreate(false);
             collections.refetch();
-            setSelected(name);
+            openCollection(name);
           }}
         />
       )}

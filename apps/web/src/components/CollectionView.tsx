@@ -11,6 +11,7 @@ import { SearchView } from "./SearchView";
 import { FilterBar } from "./FilterBar";
 import { AddRecordModal } from "./AddRecordModal";
 import { ImportModal } from "./ImportModal";
+import { CloneModal } from "./CloneModal";
 import { StatsBar } from "./StatsBar";
 import { toast } from "@/lib/toast";
 
@@ -35,6 +36,7 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showClone, setShowClone] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -170,6 +172,9 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn sm" onClick={refresh}>
             ↻ Refresh
+          </button>
+          <button className="btn sm" onClick={() => setShowClone(true)} disabled={!conn}>
+            ⇄ Clone
           </button>
           <button className="btn sm danger" onClick={deleteCollection}>
             Delete collection
@@ -378,6 +383,15 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
             toast.success("Import complete.");
             refresh();
           }}
+        />
+      )}
+
+      {showClone && conn && (
+        <CloneModal
+          sourceConn={conn}
+          sourceConnector={connector}
+          collection={collection}
+          onClose={() => setShowClone(false)}
         />
       )}
     </div>
