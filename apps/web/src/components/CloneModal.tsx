@@ -7,6 +7,7 @@ import { useConnections, type SavedConnection } from "@/lib/store";
 import { connectorFor } from "@/lib/connector";
 import { useEscape } from "@/lib/useEscape";
 import { EngineBadge } from "./EngineBadge";
+import { ConnectionForm } from "./ConnectionForm";
 
 interface Props {
   sourceConn: SavedConnection;
@@ -26,6 +27,7 @@ type Phase =
   | { kind: "error"; message: string };
 
 const CREATE_NEW = "__new__";
+const NEW_CONNECTION = "__new_connection__";
 
 export function CloneModal({ sourceConn, sourceConnector, collection, onClose }: Props) {
   const connections = useConnections((s) => s.connections);
@@ -34,6 +36,7 @@ export function CloneModal({ sourceConn, sourceConnector, collection, onClose }:
   const [newName, setNewName] = useState(`${collection}_copy`);
   const [phase, setPhase] = useState<Phase>({ kind: "form" });
   const [cancelled, setCancelled] = useState(false);
+  const [showNewConn, setShowNewConn] = useState(false);
   const cancelRef = useRef(false);
   useEscape(onClose);
 
@@ -54,6 +57,10 @@ export function CloneModal({ sourceConn, sourceConnector, collection, onClose }:
 
   // Reset the destination-collection choice whenever the destination connection changes.
   function selectDestConn(id: string) {
+    if (id === NEW_CONNECTION) {
+      setShowNewConn(true);
+      return;
+    }
     setDestConnId(id);
     setDestCollection(CREATE_NEW);
   }
@@ -142,6 +149,7 @@ export function CloneModal({ sourceConn, sourceConnector, collection, onClose }:
                     {c.name} ({c.engine}){c.id === sourceConn.id ? " — same connection" : ""}
                   </option>
                 ))}
+                <option value={NEW_CONNECTION}>+ New connection… (different DB / URL)</option>
               </select>
               {destConn && (
                 <div style={{ marginTop: 8 }}>
@@ -257,6 +265,17 @@ export function CloneModal({ sourceConn, sourceConnector, collection, onClose }:
           </>
         )}
       </div>
+
+      {showNewConn && (
+        <ConnectionForm
+          onClose={() => setShowNewConn(false)}
+          onSaved={(created) => {
+            setShowNewConn(false);
+            setDestConnId(created.id);
+            setDestCollection(CREATE_NEW);
+          }}
+        />
+      )}
     </div>
   );
 }
