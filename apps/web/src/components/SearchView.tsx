@@ -1,16 +1,27 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Json, SearchResult, VectorConnector, VectorRecord } from "@vyn/core";
-import { useConnections } from "@/lib/store";
-import { embedText, EmbeddingError } from "@/lib/embeddings";
+import {
+  embedText,
+  defaultModelFor,
+  EMBEDDING_MODELS,
+  type Json,
+  type SearchResult,
+  type VectorConnector,
+  type VectorRecord,
+} from "@vyn/core";
+import { resolveEmbedding, boundModelFor, type SavedConnection } from "@/lib/store";
+import { autoDimensions } from "@/lib/embed";
 import { RecordDrawer } from "./RecordDrawer";
 import { FilterBar } from "./FilterBar";
 
 interface Props {
   connector: VectorConnector;
-  connectionId: string;
+  conn?: SavedConnection;
   collection: string;
+  dimension?: number;
+  /** Name of the collection's server-side vectorizer (Weaviate), if any. */
+  serverVectorizer?: string;
   onChanged: () => void;
 }
 
@@ -24,14 +35,16 @@ const MODE_LABELS: Record<Mode, string> = {
   vector: "Raw vector",
 };
 
-export function SearchView({ connector, connectionId, collection, onChanged }: Props) {
-  const caps = connector.capabilities();
-  const conn = useConnections((s) => s.get(connectionId));
-  const updateConn = useConnections((s) => s.update);
+const CUSTOM_MODEL = "__custom__";
 
-  // "Semantic" works on every engine (it's just embed-then-vectorSearch), so
-  // it's always offered — the modes list adapts to the rest of what the
-  // engine can actually do.
+export function SearchView({ connector, conn, collection, dimension, serverVectorizer, onChanged }: Props) {
+  const caps = connector.capabilities();
+  const embedding = conn ? resolveEmbedding(conn) : undefined;
+  const boundModel = conn ? boundModelFor(conn, collection) : undefined;
+
+  // "Semantic" works on every engine (client-embed then vectorSearch, or —
+  // when the collection has a server-side vectorizer — a pure-vector hybrid
+  // query that needs no client embedding at all), so it's always offered.
   const modes = useMemo(() => {
     const list: Mode[] = [];
     if (caps.textSearch) list.push("keyword");
@@ -45,7 +58,12 @@ export function SearchView({ connector, connectionId, collection, onChanged }: P
   const [recordId, setRecordId] = useState("");
   const [vectorText, setVectorText] = useState("");
   const [limit, setLimit] = useState(10);
-  const [apiKey, setApiKey] = useState(conn?.embeddingApiKey ?? "");
+  const [alpha, setAlpha] = useState(0.5);
+  const [model, setModel] = useState(
+    boundModel ?? embedding?.model ?? (embedding ? defaultModelFor(embedding.provider) : ""),
+  );
+  const [customModel, setCustomModel] = useState("");
+  const [useVectorBlend, setUseVectorBlend] = useState(false);
 
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -53,8 +71,12 @@ export function SearchView({ connector, connectionId, collection, onChanged }: P
   const [inspect, setInspect] = useState<VectorRecord | null>(null);
   const [filter, setFilter] = useState<Json | undefined>(undefined);
 
-  const needsEmbedding = mode === "semantic" || mode === "hybrid";
-  const embeddingRequired = mode === "semantic";
+  const effectiveModel = model === CUSTOM_MODEL ? customModel.trim() : model;
+  const modelMismatch = !!boundModel && effectiveModel !== "" && effectiveModel !== boundModel;
+
+  // Whether this mode needs a client-side embedding call at all.
+  const needsClientEmbed =
+    (mode === "semantic" && !serverVectorizer) || (mode === "hybrid" && !serverVectorizer && useVectorBlend);
 
   const columns = useMemo(() => {
     const keys = new Set<string>();
@@ -62,9 +84,14 @@ export function SearchView({ connector, connectionId, collection, onChanged }: P
     return [...keys].slice(0, 6);
   }, [results]);
 
-  function saveApiKey(value: string) {
-    setApiKey(value);
-    updateConn(connectionId, { embeddingApiKey: value.trim() || undefined });
+  async function embedQuery(): Promise<number[]> {
+    if (!embedding) throw new Error("Add an embedding provider on this connection first.");
+    if (!effectiveModel) throw new Error("Pick a model or enter a custom one.");
+    const cfg = { ...embedding, model: effectiveModel };
+    return embedText(cfg, text.trim(), {
+      dimensions: autoDimensions(cfg, dimension),
+      bridgeUrl: conn?.bridgeUrl,
+    });
   }
 
   async function run() {
@@ -80,14 +107,19 @@ export function SearchView({ connector, connectionId, collection, onChanged }: P
       } else if (mode === "hybrid") {
         if (!text.trim()) throw new Error("Enter a search query.");
         if (!connector.textSearch) throw new Error("This engine doesn't support text search.");
-        // Embedding key is optional here — without it, hybrid still runs as
-        // keyword-only; with it, the query genuinely blends keyword + vector.
-        const vector = apiKey.trim() ? await embedText("openai", apiKey.trim(), text.trim()) : undefined;
-        hits = await connector.textSearch(collection, { text: text.trim(), mode: "hybrid", limit, vector, filter });
+        const vector = needsClientEmbed ? await embedQuery() : undefined;
+        hits = await connector.textSearch(collection, { text: text.trim(), mode: "hybrid", limit, vector, filter, alpha });
       } else if (mode === "semantic") {
         if (!text.trim()) throw new Error("Enter text to search for.");
-        const vector = await embedText("openai", apiKey.trim(), text.trim());
-        hits = await connector.vectorSearch(collection, { vector, limit, filter });
+        if (serverVectorizer) {
+          // Pure-vector hybrid (alpha=1) lets the engine embed the query
+          // itself — no client key, no model choice, nothing to keep in sync.
+          if (!connector.textSearch) throw new Error("This engine doesn't support server-side search.");
+          hits = await connector.textSearch(collection, { text: text.trim(), mode: "hybrid", limit, filter, alpha: 1 });
+        } else {
+          const vector = await embedQuery();
+          hits = await connector.vectorSearch(collection, { vector, limit, filter });
+        }
       } else if (mode === "similar") {
         if (!recordId.trim()) throw new Error("Enter a record ID.");
         const rec = await connector.getRecord(collection, recordId.trim());
@@ -101,8 +133,7 @@ export function SearchView({ connector, connectionId, collection, onChanged }: P
       }
       setResults(hits);
     } catch (err) {
-      const message = err instanceof EmbeddingError ? err.message : err instanceof Error ? err.message : String(err);
-      setError(message);
+      setError(err instanceof Error ? err.message : String(err));
       setResults(null);
     } finally {
       setBusy(false);
@@ -166,25 +197,99 @@ export function SearchView({ connector, connectionId, collection, onChanged }: P
         </button>
       </div>
 
-      {needsEmbedding && (
+      {mode === "hybrid" && (
         <div className="field" style={{ maxWidth: 420 }}>
           <label>
-            OpenAI API key {embeddingRequired ? "(required — embeds your query text)" : "(optional — blends vector relevance in)"}
+            Alpha — {alpha.toFixed(2)} ({alpha === 0 ? "pure keyword" : alpha === 1 ? "pure vector" : "blend"})
           </label>
           <input
-            className="input"
-            type="password"
-            placeholder="sk-…"
-            value={apiKey}
-            onChange={(e) => saveApiKey(e.target.value)}
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={alpha}
+            onChange={(e) => setAlpha(Number(e.target.value))}
+            style={{ width: "100%", accentColor: "var(--accent)" }}
           />
+        </div>
+      )}
+
+      {mode === "hybrid" && serverVectorizer && (
+        <div className="banner" style={{ background: "var(--bg)", maxWidth: 480 }}>
+          Vector side is embedded automatically by <strong>{serverVectorizer}</strong> — no key needed.
+        </div>
+      )}
+
+      {mode === "semantic" && serverVectorizer && (
+        <div className="banner" style={{ background: "var(--bg)", maxWidth: 480 }}>
+          This collection embeds automatically with <strong>{serverVectorizer}</strong> — no key needed.
+        </div>
+      )}
+
+      {mode === "hybrid" && !serverVectorizer && (
+        <div className="field" style={{ maxWidth: 420 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer", marginBottom: 0 }}>
+            <input
+              type="checkbox"
+              checked={useVectorBlend}
+              onChange={(e) => setUseVectorBlend(e.target.checked)}
+              style={{ width: 15, height: 15, accentColor: "var(--accent)" }}
+              disabled={!embedding}
+            />
+            <span style={{ color: "var(--text)" }}>Blend in true vector relevance (embeds the query text)</span>
+          </label>
+          {!embedding && (
+            <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 6 }}>
+              Without an embedding provider on this connection, hybrid runs as keyword-only.
+            </div>
+          )}
+        </div>
+      )}
+
+      {(mode === "semantic" ? !serverVectorizer : needsClientEmbed) && (
+        <div className="field" style={{ maxWidth: 420 }}>
+          {embedding ? (
+            <>
+              <label>Model ({embedding.provider})</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <select className="select" style={{ flex: 1 }} value={model} onChange={(e) => setModel(e.target.value)}>
+                  {EMBEDDING_MODELS[embedding.provider].map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.id} · {m.dim} dims
+                    </option>
+                  ))}
+                  <option value={CUSTOM_MODEL}>Custom…</option>
+                </select>
+                {model === CUSTOM_MODEL && (
+                  <input
+                    className="input"
+                    style={{ flex: 1 }}
+                    placeholder="model id"
+                    value={customModel}
+                    onChange={(e) => setCustomModel(e.target.value)}
+                  />
+                )}
+              </div>
+              {modelMismatch && (
+                <div style={{ color: "var(--red)", fontSize: 12, marginTop: 6 }}>
+                  ⚠ This collection was embedded with <strong>{boundModel}</strong>. Searching with a different model
+                  will return meaningless scores unless that's what you intend.
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="banner err">
+              Add an embedding provider on this connection to use {mode} search — edit the connection and open
+              "Embedding provider" under Advanced.
+            </div>
+          )}
         </div>
       )}
 
       <div style={{ color: "var(--text-faint)", fontSize: 12.5, margin: "10px 0 14px" }}>
         {mode === "keyword" && "Full-text BM25 search over indexed properties."}
-        {mode === "hybrid" && "Blends keyword and vector relevance. Add a key above for a true vector blend; without one, this runs as keyword-only."}
-        {mode === "semantic" && "Embeds your text client-side, then runs a nearest-neighbor vector search — works on any engine."}
+        {mode === "hybrid" && "Blends keyword and vector relevance."}
+        {mode === "semantic" && "Runs a nearest-neighbor vector search — works on any engine."}
         {mode === "similar" && "Finds the nearest neighbors of an existing record, using its stored vector."}
         {mode === "vector" && "Paste a raw query vector as a JSON array."}
       </div>

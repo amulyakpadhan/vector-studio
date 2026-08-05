@@ -1,10 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createConnector, type DbEngine } from "@vyn/core";
-import { useConnections, toConfig, type SavedConnection } from "@/lib/store";
+import { createConnector, EMBEDDING_MODELS, type DbEngine, type EmbeddingProvider } from "@vyn/core";
+import { useConnections, resolveEmbedding, toConfig, type SavedConnection } from "@/lib/store";
 import { useBridge, BRIDGE_URL } from "@/lib/bridge";
 import { useEscape } from "@/lib/useEscape";
+
+const EMBEDDING_PROVIDERS: { value: EmbeddingProvider; label: string }[] = [
+  { value: "openai", label: "OpenAI" },
+  { value: "cohere", label: "Cohere" },
+  { value: "voyage", label: "Voyage AI" },
+];
+
+const CUSTOM_MODEL = "__custom__";
 
 /** Engine-specific connection settings, surfaced under "Advanced". */
 const ENGINE_OPTIONS: Partial<Record<DbEngine, { key: string; label: string; placeholder: string }[]>> = {
@@ -89,6 +97,24 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
   const [test, setTest] = useState<TestState>({ kind: "idle" });
   useEscape(onClose);
 
+  const existingEmbedding = existing ? resolveEmbedding(existing) : undefined;
+  const initModel = existingEmbedding?.model;
+  const initKnown = !!(
+    existingEmbedding && initModel && EMBEDDING_MODELS[existingEmbedding.provider].some((m) => m.id === initModel)
+  );
+  const [embedProvider, setEmbedProvider] = useState<EmbeddingProvider | "">(existingEmbedding?.provider ?? "");
+  const [embedApiKey, setEmbedApiKey] = useState(existingEmbedding?.apiKey ?? "");
+  const [embedModel, setEmbedModel] = useState<string>(
+    existingEmbedding
+      ? initModel
+        ? initKnown
+          ? initModel
+          : CUSTOM_MODEL
+        : EMBEDDING_MODELS[existingEmbedding.provider][0]!.id
+      : "",
+  );
+  const [embedCustomModel, setEmbedCustomModel] = useState(initModel && !initKnown ? initModel : "");
+
   const optionDefs = ENGINE_OPTIONS[engine] ?? [];
   function buildOptions(): Record<string, string> | undefined {
     const out: Record<string, string> = {};
@@ -141,6 +167,16 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
       apiKey: apiKey.trim() || undefined,
       bridgeUrl,
       options: buildOptions(),
+      embedding:
+        embedProvider && embedApiKey.trim()
+          ? {
+              provider: embedProvider,
+              apiKey: embedApiKey.trim(),
+              model: (embedModel === CUSTOM_MODEL ? embedCustomModel.trim() : embedModel) || undefined,
+            }
+          : undefined,
+      // Clear the legacy field once the connection is edited under the new model.
+      embeddingApiKey: undefined,
     };
     if (existing) {
       update(existing.id, fields);
@@ -259,6 +295,67 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
 
         {useBridgeOn && bridge.status === "offline" && (
           <div className="banner err">The bridge isn’t running — start it with `pnpm bridge` from the repo, or this connection won’t reach the database.</div>
+        )}
+
+        <div className="field">
+          <label>Embedding provider (for text search &amp; text imports) — optional</label>
+          <select
+            className="select"
+            value={embedProvider}
+            onChange={(e) => {
+              const p = e.target.value as EmbeddingProvider | "";
+              setEmbedProvider(p);
+              setEmbedModel(p ? EMBEDDING_MODELS[p][0]!.id : "");
+              setEmbedCustomModel("");
+            }}
+          >
+            <option value="">None — search by pasting a raw vector only</option>
+            {EMBEDDING_PROVIDERS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 7 }}>
+            {engine === "weaviate"
+              ? "Weaviate has its own server-side vectorizer when configured — this is only needed for classes that store raw vectors instead."
+              : "Lets you search by phrase and import text records — Vyn embeds client-side and the key never leaves your machine."}
+          </div>
+        </div>
+
+        {embedProvider && (
+          <>
+            <div className="field">
+              <label>{EMBEDDING_PROVIDERS.find((p) => p.value === embedProvider)!.label} API key</label>
+              <input
+                className="input"
+                type="password"
+                placeholder="••••••••"
+                value={embedApiKey}
+                onChange={(e) => setEmbedApiKey(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label>Model</label>
+              <select className="select" value={embedModel} onChange={(e) => setEmbedModel(e.target.value)}>
+                {EMBEDDING_MODELS[embedProvider].map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.id} · {m.dim} dims{m.variableDim ? " (resizable)" : ""}
+                  </option>
+                ))}
+                <option value={CUSTOM_MODEL}>Custom…</option>
+              </select>
+              {embedModel === CUSTOM_MODEL && (
+                <input
+                  className="input"
+                  style={{ marginTop: 8 }}
+                  placeholder="exact model id, e.g. text-embedding-3-large"
+                  value={embedCustomModel}
+                  onChange={(e) => setEmbedCustomModel(e.target.value)}
+                />
+              )}
+            </div>
+          </>
         )}
 
         {optionDefs.length > 0 && (

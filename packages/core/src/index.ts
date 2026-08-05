@@ -22,3 +22,15 @@ export {
   type RecordFormat,
   type SerializeOpts,
 } from "./io.ts";
+export {
+  embedText,
+  embedTexts,
+  defaultModelFor,
+  modelInfo,
+  EMBEDDING_MODELS,
+  type EmbeddingProvider,
+  type EmbeddingConfig,
+  type EmbeddingModelInfo,
+  type EmbedInputType,
+  type EmbedOptions,
+} from "./embeddings.ts";
