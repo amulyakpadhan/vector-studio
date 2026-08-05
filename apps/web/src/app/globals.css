@@ -562,7 +562,10 @@ tbody tr:hover {
 .studio {
   display: grid;
   grid-template-columns: 260px 1fr;
-  min-height: calc(100vh - 56px);
+  /* A hard height (not min-height) caps the grid at the viewport, so
+     .sidebar and .main each scroll independently within it instead of the
+     whole page growing and scrolling as one when either side gets tall. */
+  height: calc(100vh - 56px);
 }
 .sidebar {
   border-right: 1px solid var(--border);
@@ -1197,7 +1200,7 @@ tbody tr:hover {
      content instead of a fixed sidebar that eats half a phone screen. */
   .studio {
     grid-template-columns: 1fr;
-    min-height: auto;
+    height: auto;
   }
   .sidebar {
     border-right: none;
