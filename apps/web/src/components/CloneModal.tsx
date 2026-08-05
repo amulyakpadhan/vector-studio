@@ -6,6 +6,7 @@ import type { VectorConnector, VectorRecord } from "@vyn/core";
 import { useConnections, type SavedConnection } from "@/lib/store";
 import { connectorFor } from "@/lib/connector";
 import { useEscape } from "@/lib/useEscape";
+import { checkCollectionName } from "@/lib/collectionName";
 import { EngineBadge } from "./EngineBadge";
 import { ConnectionForm } from "./ConnectionForm";
 
@@ -43,10 +44,19 @@ export function CloneModal({ sourceConn, sourceConnector, collection, onClose }:
   const destConn = connections.find((c) => c.id === destConnId);
   const destConnector = useMemo(() => (destConn ? connectorFor(destConn) : null), [destConn]);
   const sameCollection = destConn?.id === sourceConn.id && destCollection === collection;
+  const nameCheck = useMemo(
+    () => (destConnector ? checkCollectionName(destConnector.capabilities().engine, newName) : undefined),
+    [destConnector, newName],
+  );
 
   const sourceSchema = useQuery({
     queryKey: ["clone-source-schema", sourceConn.id, collection],
     queryFn: () => sourceConnector.getSchema(collection),
+  });
+
+  const sourceStats = useQuery({
+    queryKey: ["clone-source-stats", sourceConn.id, collection],
+    queryFn: () => sourceConnector.getStats(collection),
   });
 
   const destCollections = useQuery({
@@ -67,7 +77,10 @@ export function CloneModal({ sourceConn, sourceConnector, collection, onClose }:
 
   const busy = phase.kind === "creating" || phase.kind === "copying";
   const canStart =
-    !busy && !!destConnector && (destCollection !== CREATE_NEW ? true : newName.trim() !== "") && !sameCollection;
+    !busy &&
+    !!destConnector &&
+    (destCollection !== CREATE_NEW ? true : newName.trim() !== "" && !nameCheck?.error) &&
+    !sameCollection;
 
   async function start() {
     if (!destConnector) return;
@@ -80,7 +93,7 @@ export function CloneModal({ sourceConn, sourceConnector, collection, onClose }:
 
     try {
       if (destCollection === CREATE_NEW) {
-        targetName = newName.trim();
+        targetName = nameCheck?.value ?? newName.trim();
         await destConnector.createCollection({
           name: targetName,
           dimension: schema?.dimension ?? 0,
@@ -174,6 +187,12 @@ export function CloneModal({ sourceConn, sourceConnector, collection, onClose }:
               <div className="field">
                 <label>New collection name</label>
                 <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} />
+                {newName.trim() !== "" && nameCheck?.error && (
+                  <div style={{ color: "var(--red)", fontSize: 12, marginTop: 6 }}>{nameCheck.error}</div>
+                )}
+                {newName.trim() !== "" && !nameCheck?.error && nameCheck?.note && (
+                  <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 6 }}>{nameCheck.note}</div>
+                )}
                 <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 6 }}>
                   Created with the source's dimension
                   {sourceSchema.data?.dimension ? ` (${sourceSchema.data.dimension})` : ""} and metric
@@ -220,13 +239,48 @@ export function CloneModal({ sourceConn, sourceConnector, collection, onClose }:
 
         {phase.kind === "copying" && (
           <div style={{ padding: "12px 0" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
               <span className="spinner" />
               <span style={{ color: "var(--text)" }}>
                 Copied {phase.copied.toLocaleString()} record{phase.copied === 1 ? "" : "s"}
-                {phase.skipped > 0 ? ` (${phase.skipped} skipped — no vector)` : ""}…
+                {phase.skipped > 0 ? ` (${phase.skipped} skipped — no vector)` : ""}
+                {sourceStats.data?.count ? ` of ~${sourceStats.data.count.toLocaleString()}` : ""}…
               </span>
             </div>
+            {!!sourceStats.data?.count && (
+              <div style={{ marginBottom: 14 }}>
+                {(() => {
+                  const total = sourceStats.data!.count;
+                  const pct = Math.max(2, Math.min(100, ((phase.copied + phase.skipped) / total) * 100));
+                  return (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span
+                        style={{
+                          flex: 1,
+                          height: 6,
+                          borderRadius: 3,
+                          background: "var(--border)",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: "block",
+                            height: "100%",
+                            width: `${pct}%`,
+                            background: "var(--accent)",
+                            transition: "width 200ms ease",
+                          }}
+                        />
+                      </span>
+                      <span style={{ color: "var(--text-faint)", fontSize: 12, minWidth: 34, textAlign: "right" }}>
+                        {Math.round(pct)}%
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
             <div className="modal-foot" style={{ marginTop: 0 }}>
               <button className="btn ghost" onClick={requestCancel} disabled={cancelled}>
                 {cancelled ? "Stopping…" : "Stop"}
