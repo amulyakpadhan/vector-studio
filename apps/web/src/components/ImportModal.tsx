@@ -76,6 +76,14 @@ export function ImportModal({
 
   const missingVec = useMemo(() => (records ?? []).filter((r) => !r.vector).length, [records]);
   const hasVec = (records?.length ?? 0) - missingVec;
+  const dimMismatches = useMemo(
+    () => (dimension ? (records ?? []).filter((r) => r.vector && r.vector.length !== dimension) : []),
+    [records, dimension],
+  );
+  const mismatchedDims = useMemo(
+    () => [...new Set(dimMismatches.map((r) => r.vector!.length))].sort((a, b) => a - b),
+    [dimMismatches],
+  );
   const missingVectorizerField = useMemo(() => {
     if (!serverVectorizerField) return 0;
     return (records ?? []).filter((r) => !r.vector && !(serverVectorizerField in r.payload)).length;
@@ -119,6 +127,7 @@ export function ImportModal({
 
   async function run() {
     if (!records) return;
+    if (dimMismatches.length > 0) return;
     setRunError(null);
     const out: VectorRecord[] = records.map((r) => ({ ...r }));
 
@@ -219,6 +228,14 @@ export function ImportModal({
             {records && (
               <div className="banner" style={{ background: "var(--bg)" }}>
                 {records.length} records · {hasVec} with vectors · {missingVec} without
+              </div>
+            )}
+
+            {records && dimMismatches.length > 0 && (
+              <div className="banner err">
+                ⚠ {dimMismatches.length} record{dimMismatches.length === 1 ? "" : "s"} {dimMismatches.length === 1 ? "has" : "have"} a
+                vector of {mismatchedDims.length === 1 ? `${mismatchedDims[0]} dims` : `${mismatchedDims.join("/")} dims`}, but this
+                collection expects <strong>{dimension}</strong>. Fix the file or re-export with matching dimensions before importing.
               </div>
             )}
 
@@ -352,7 +369,7 @@ export function ImportModal({
               <button className="btn ghost" onClick={onClose} disabled={busy}>
                 Cancel
               </button>
-              <button className="btn primary" onClick={run} disabled={!records || busy}>
+              <button className="btn primary" onClick={run} disabled={!records || busy || dimMismatches.length > 0}>
                 {busy ? <span className="spinner" /> : `Import ${records?.length ?? ""} records`}
               </button>
             </div>

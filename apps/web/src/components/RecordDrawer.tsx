@@ -18,6 +18,7 @@ export function RecordDrawer({ record, collection, connector, onClose, onChanged
   const [draft, setDraft] = useState(() => JSON.stringify(record.payload, null, 2));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [vectorExpanded, setVectorExpanded] = useState(false);
   useEscape(onClose);
 
   async function copy(text: string, label: string) {
@@ -116,11 +117,40 @@ export function RecordDrawer({ record, collection, connector, onClose, onChanged
 
         {record.vector && (
           <div className="field">
-            <label>Vector ({record.vector.length} dims — first 12)</label>
-            <div className="cell-mono" style={{ fontSize: 12 }}>
-              [{record.vector.slice(0, 12).map((n) => n.toFixed(4)).join(", ")}
-              {record.vector.length > 12 ? ", …" : ""}]
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <label style={{ marginBottom: 0 }}>
+                Vector ({record.vector.length} dims{!vectorExpanded && record.vector.length > 12 ? " — first 12" : ""})
+              </label>
+              {record.vector.length > 12 && (
+                <button className="btn ghost sm" onClick={() => setVectorExpanded((v) => !v)}>
+                  {vectorExpanded ? "Show less" : "Show full vector"}
+                </button>
+              )}
             </div>
+            {vectorExpanded ? (
+              <pre
+                style={{
+                  background: "var(--bg)",
+                  border: "1px solid var(--border-bright)",
+                  borderRadius: "var(--radius)",
+                  padding: 12,
+                  fontFamily: "var(--mono)",
+                  fontSize: 12,
+                  maxHeight: 220,
+                  overflow: "auto",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  marginTop: 6,
+                }}
+              >
+                [{record.vector.map((n) => n.toFixed(6)).join(", ")}]
+              </pre>
+            ) : (
+              <div className="cell-mono" style={{ fontSize: 12 }}>
+                [{record.vector.slice(0, 12).map((n) => n.toFixed(4)).join(", ")}
+                {record.vector.length > 12 ? ", …" : ""}]
+              </div>
+            )}
           </div>
         )}
 
