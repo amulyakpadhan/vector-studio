@@ -25,9 +25,14 @@ function looksLocal(url: string): boolean {
   return /localhost|127\.0\.0\.1|0\.0\.0\.0|192\.168\.|10\.|:\d+$/.test(url.trim());
 }
 
+/** Qdrant Cloud clusters don't send CORS headers, so the browser can't reach them directly. */
+function looksQdrantCloud(engine: DbEngine, url: string): boolean {
+  return engine === "qdrant" && /\.cloud\.qdrant\.io/i.test(url.trim());
+}
+
 /** Engines/URLs that usually need the bridge because of browser CORS. */
 function likelyNeedsBridge(engine: DbEngine, url: string): boolean {
-  return engine === "pinecone" || looksLocal(url);
+  return engine === "pinecone" || looksLocal(url) || looksQdrantCloud(engine, url);
 }
 
 interface EngineDef {
@@ -238,7 +243,7 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
             </span>
           </label>
           <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 7 }}>
-            {looksLocal(url) || engine === "pinecone"
+            {looksLocal(url) || engine === "pinecone" || looksQdrantCloud(engine, url)
               ? "Recommended — self-hosted and CORS-restricted DBs need the bridge to be reachable from the browser."
               : "Only needed for self-hosted or CORS-restricted databases."}
             {bridge.status === "offline" && (
