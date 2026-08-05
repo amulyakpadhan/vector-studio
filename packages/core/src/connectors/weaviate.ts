@@ -177,6 +177,7 @@ export class WeaviateConnector implements VectorConnector {
         name: p.name,
         type: WEAVIATE_TYPE_MAP[p.dataType[0] ?? ""] ?? "unknown",
       })),
+      serverVectorizer: c.vectorizer && c.vectorizer !== "none" ? c.vectorizer : undefined,
       raw: c as unknown as Json,
     };
   }

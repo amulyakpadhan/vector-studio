@@ -52,6 +52,13 @@ export interface CollectionSchema {
   metric?: DistanceMetric;
   /** Payload/metadata fields when the engine exposes a schema. */
   fields: SchemaField[];
+  /**
+   * Name of the server-side vectorizer configured on this collection (e.g.
+   * "text2vec-openai"), when the engine embeds text itself and no
+   * client-supplied vector is needed. Undefined means bring-your-own-vector —
+   * either because the engine has no such concept, or none is configured.
+   */
+  serverVectorizer?: string;
   raw?: Json;
 }
 

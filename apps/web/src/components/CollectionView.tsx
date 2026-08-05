@@ -201,7 +201,14 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
       {tab === "viz" ? (
         <ProjectionView connector={connector} collection={collection} />
       ) : tab === "search" ? (
-        <SearchView connector={connector} connectionId={connectionId} collection={collection} onChanged={refresh} />
+        <SearchView
+          connector={connector}
+          conn={conn}
+          collection={collection}
+          dimension={dim}
+          serverVectorizer={schema.data?.serverVectorizer}
+          onChanged={refresh}
+        />
       ) : (
         <>
       {records.isError && <div className="banner err">{(records.error as Error).message}</div>}
@@ -346,6 +353,7 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
           conn={conn}
           collection={collection}
           dimension={dim}
+          serverVectorizer={schema.data?.serverVectorizer}
           onClose={() => setShowAdd(false)}
           onAdded={() => {
             setShowAdd(false);
@@ -361,6 +369,7 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
           conn={conn}
           collection={collection}
           dimension={dim}
+          serverVectorizer={schema.data?.serverVectorizer}
           onClose={() => setShowImport(false)}
           onImported={() => {
             setShowImport(false);

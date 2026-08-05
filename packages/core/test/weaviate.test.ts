@@ -165,6 +165,26 @@ test("textSearch hybrid without a vector omits the $vec variable entirely", asyn
   assert.equal((gqlCall.body as any).variables.vec, undefined);
 });
 
+test("getSchema exposes serverVectorizer when configured, undefined for vectorizer: none", async () => {
+  const calls1 = stubFetch((_m, path) => {
+    if (path === "/v1/schema/Docs") return DOCS_CLASS; // vectorizer: "none"
+    if (path === "/v1/objects") return { objects: [] };
+    return {};
+  });
+  const noneSchema = await conn().getSchema("Docs");
+  assert.equal(noneSchema.serverVectorizer, undefined);
+  assert.ok(calls1.length > 0);
+
+  const AUTO_CLASS = { ...DOCS_CLASS, class: "Auto", vectorizer: "text2vec-openai" };
+  stubFetch((_m, path) => {
+    if (path === "/v1/schema/Auto") return AUTO_CLASS;
+    if (path === "/v1/objects") return { objects: [] };
+    return {};
+  });
+  const autoSchema = await conn().getSchema("Auto");
+  assert.equal(autoSchema.serverVectorizer, "text2vec-openai");
+});
+
 test("GraphQL errors surface as ConnectorError", async () => {
   stubFetch((method, path) => {
     if (path === "/v1/schema/Docs") return DOCS_CLASS;
