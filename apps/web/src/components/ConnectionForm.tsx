@@ -91,6 +91,7 @@ type TestState = { kind: "idle" | "testing" } | { kind: "ok"; version?: string; 
 export function ConnectionForm({ existing, onClose, onSaved }: Props) {
   const add = useConnections((s) => s.add);
   const update = useConnections((s) => s.update);
+  const connections = useConnections((s) => s.connections);
 
   const [name, setName] = useState(existing?.name ?? "");
   const [engine, setEngine] = useState<DbEngine>(existing?.engine ?? "qdrant");
@@ -153,7 +154,10 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
   const engineDef = ENGINES.find((e) => e.value === engine)!;
   const urlOk = engineDef.needsUrl ? url.trim() !== "" : true;
   const keyOk = engineDef.needsKey ? apiKey.trim() !== "" : true;
-  const canSave = name.trim() !== "" && urlOk && keyOk && engineDef.ready;
+  const duplicateName =
+    name.trim() !== "" &&
+    connections.some((c) => c.id !== existing?.id && c.name.trim().toLowerCase() === name.trim().toLowerCase());
+  const canSave = name.trim() !== "" && urlOk && keyOk && engineDef.ready && !duplicateName;
   const canTest = urlOk && keyOk && engineDef.ready;
 
   async function runTest() {
@@ -221,6 +225,11 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
             onChange={(e) => setName(e.target.value)}
             autoFocus
           />
+          {duplicateName && (
+            <div style={{ color: "var(--red)", fontSize: 12, marginTop: 6 }}>
+              You already have a connection named "{name.trim()}" — pick a different name.
+            </div>
+          )}
         </div>
 
         <div className="field">

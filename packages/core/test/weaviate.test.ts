@@ -227,3 +227,27 @@ test("a server-side 'interface conversion' panic gets an explanatory hint append
       /Weaviate server-side crash, not a Vyn bug/.test(e.message),
   );
 });
+
+test("createCollection hitting a free-tier collection cap gets an explanatory hint appended", async () => {
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({ errorCode: "USAGE_LIMIT_EXCEEDED", limit: "collections", message: "collections count limit of 1 reached for this instance.", value: 1 }),
+      { status: 429 },
+    )) as typeof fetch;
+  await assert.rejects(
+    () => conn().createCollection({ name: "Docs2", dimension: 8, metric: "cosine" }),
+    (e: Error) =>
+      e.name === "ConnectorError" &&
+      /collections count limit/.test(e.message) &&
+      /plan's collection limit, not a Vyn error/.test(e.message),
+  );
+});
+
+test("a 429 unrelated to usage limits is left unmodified", async () => {
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ errorCode: "SOMETHING_ELSE", message: "rate limited" }), { status: 429 })) as typeof fetch;
+  await assert.rejects(
+    () => conn().createCollection({ name: "Docs2", dimension: 8, metric: "cosine" }),
+    (e: Error) => e.name === "ConnectorError" && !/plan's collection limit/.test(e.message),
+  );
+});

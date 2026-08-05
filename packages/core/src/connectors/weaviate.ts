@@ -190,11 +190,15 @@ export class WeaviateConnector implements VectorConnector {
   async createCollection(spec: CreateCollectionSpec): Promise<void> {
     // vectorizer "none" → bring-your-own vectors; Weaviate infers dimension on
     // first insert, so spec.dimension isn't needed up front.
-    await this.http.post("/v1/schema", {
-      class: spec.name,
-      vectorizer: "none",
-      vectorIndexConfig: { distance: METRIC_TO_WEAVIATE[spec.metric] },
-    });
+    try {
+      await this.http.post("/v1/schema", {
+        class: spec.name,
+        vectorizer: "none",
+        vectorIndexConfig: { distance: METRIC_TO_WEAVIATE[spec.metric] },
+      });
+    } catch (err) {
+      throw explainUsageLimit(err);
+    }
   }
 
   async deleteCollection(collection: string): Promise<void> {
@@ -418,6 +422,26 @@ function explainGraphQLError(message: string): string {
     `${message} — this is a Weaviate server-side crash, not a Vyn bug. It usually means one of this class's ` +
     `indexed "int" properties holds a value too large for GraphQL's int32 limit. Check that property's values, ` +
     `consider changing its dataType to "number", or try a newer Weaviate version.`
+  );
+}
+
+/**
+ * Weaviate Cloud's free sandbox tier caps the collection count (usually 1) —
+ * creating another one 429s with `{"errorCode":"USAGE_LIMIT_EXCEEDED", ...}`.
+ * This is an account/plan limit, not a Vyn bug, so append a hint pointing at
+ * the actual fix (delete an existing collection or upgrade the instance)
+ * instead of leaving it read like an opaque server error.
+ */
+function explainUsageLimit(err: unknown): unknown {
+  if (!(err instanceof ConnectorError) || err.status !== 429) return err;
+  const detail = err.detail as { errorCode?: string; message?: string } | undefined;
+  if (detail?.errorCode !== "USAGE_LIMIT_EXCEEDED") return err;
+  return new ConnectorError(
+    `${err.message} — this Weaviate instance has hit its plan's collection limit, not a Vyn error. ` +
+      `Delete an existing collection to free up room, or upgrade the instance's plan, then try again.`,
+    err.engine,
+    err.status,
+    err.detail,
   );
 }
 
