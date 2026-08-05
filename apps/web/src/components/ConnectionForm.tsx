@@ -17,8 +17,17 @@ const EMBEDDING_PROVIDERS: { value: EmbeddingProvider; label: string; hint?: str
 const CUSTOM_MODEL = "__custom__";
 
 /** Engine-specific connection settings, surfaced under "Advanced". */
-const ENGINE_OPTIONS: Partial<Record<DbEngine, { key: string; label: string; placeholder: string }[]>> = {
+const ENGINE_OPTIONS: Partial<Record<DbEngine, { key: string; label: string; placeholder: string; hint?: string }[]>> = {
   pinecone: [{ key: "namespace", label: "Namespace", placeholder: "default (leave blank)" }],
+  qdrant: [
+    {
+      key: "inferenceModel",
+      label: "Qdrant Cloud Inference model",
+      placeholder: "e.g. sentence-transformers/all-MiniLM-L6-v2 (leave blank to disable)",
+      hint: "If your Qdrant Cloud cluster has Inference enabled, set a model here to embed text server-side on insert & search — free tier available, no separate API key needed.",
+    },
+    { key: "inferenceField", label: "Embed from payload field", placeholder: "text (default)" },
+  ],
   chroma: [
     { key: "tenant", label: "Tenant", placeholder: "default_tenant" },
     { key: "database", label: "Database", placeholder: "default_database" },
@@ -406,6 +415,9 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
                       value={options[def.key] ?? ""}
                       onChange={(e) => setOptions((o) => ({ ...o, [def.key]: e.target.value }))}
                     />
+                    {def.hint && (
+                      <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 5 }}>{def.hint}</div>
+                    )}
                   </div>
                 ))}
               </div>

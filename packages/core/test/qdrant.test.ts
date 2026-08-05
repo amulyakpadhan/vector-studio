@@ -103,3 +103,84 @@ test("http errors become ConnectorError with status", async () => {
     (err: Error & { status?: number }) => err.name === "ConnectorError" && err.status === 404,
   );
 });
+
+// ─── Qdrant Cloud Inference ──────────────────────────────────────────────────
+
+const withInference = () =>
+  new QdrantConnector({
+    engine: "qdrant",
+    url: "http://localhost:6333",
+    apiKey: "k",
+    options: { inferenceModel: "sentence-transformers/all-MiniLM-L6-v2", inferenceField: "chunk_text" },
+  });
+
+test("getSchema exposes serverVectorizer/serverVectorizerField only when an inference model is configured", async () => {
+  const detail = {
+    result: {
+      status: "green",
+      points_count: 0,
+      config: { params: { vectors: { size: 384, distance: "Cosine" } } },
+      payload_schema: {},
+    },
+    status: "ok",
+    time: 0,
+  };
+  stubFetch({ "GET /collections/docs": detail });
+  const withIt = await withInference().getSchema("docs");
+  assert.equal(withIt.serverVectorizer, "sentence-transformers/all-MiniLM-L6-v2");
+  assert.equal(withIt.serverVectorizerField, "chunk_text");
+
+  stubFetch({ "GET /collections/docs": detail });
+  const without = await conn().getSchema("docs");
+  assert.equal(without.serverVectorizer, undefined);
+  assert.equal(without.serverVectorizerField, undefined);
+});
+
+test("upsertRecords sends a Document in place of the vector when a record has none", async () => {
+  const calls = stubFetch({ "PUT /collections/docs/points": { result: {}, status: "ok", time: 0 } });
+  await withInference().upsertRecords("docs", [
+    { id: 1, payload: { chunk_text: "hello world" } },
+    { id: 2, vector: [0.1, 0.2], payload: { chunk_text: "already embedded" } },
+  ]);
+  const body = JSON.parse((calls[0]?.init?.body as string) ?? "{}");
+  assert.deepEqual(body.points[0].vector, { text: "hello world", model: "sentence-transformers/all-MiniLM-L6-v2" });
+  assert.deepEqual(body.points[1].vector, [0.1, 0.2]);
+});
+
+test("upsertRecords throws when no inference model is configured and a record has no vector", async () => {
+  stubFetch({});
+  await assert.rejects(
+    () => conn().upsertRecords("docs", [{ id: 1, payload: { text: "x" } }]),
+    (e: Error) => e.name === "ConnectorError" && /no Qdrant Cloud Inference model is configured/.test(e.message),
+  );
+});
+
+test("upsertRecords throws when the configured embed field is missing from the payload", async () => {
+  stubFetch({});
+  await assert.rejects(
+    () => withInference().upsertRecords("docs", [{ id: 1, payload: { wrong_field: "x" } }]),
+    (e: Error) => e.name === "ConnectorError" && /no "chunk_text" field/.test(e.message),
+  );
+});
+
+test("searchByText posts a Document query to /points/query and maps hits", async () => {
+  const calls = stubFetch({
+    "POST /collections/docs/points/query": {
+      result: { points: [{ id: "a", score: 0.8, payload: { chunk_text: "hi" } }] },
+      status: "ok",
+      time: 0,
+    },
+  });
+  const hits = await withInference().searchByText("docs", { text: "greeting", limit: 5 });
+  assert.deepEqual(hits, [{ id: "a", score: 0.8, payload: { chunk_text: "hi" }, vector: undefined }]);
+  const body = JSON.parse((calls[0]?.init?.body as string) ?? "{}");
+  assert.deepEqual(body.query, { text: "greeting", model: "sentence-transformers/all-MiniLM-L6-v2" });
+});
+
+test("searchByText throws when no inference model is configured", async () => {
+  stubFetch({});
+  await assert.rejects(
+    () => conn().searchByText("docs", { text: "x", limit: 1 }),
+    (e: Error) => e.name === "ConnectorError" && /No Qdrant Cloud Inference model configured/.test(e.message),
+  );
+});

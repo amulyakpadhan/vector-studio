@@ -70,6 +70,10 @@ interface QdrantScoredPoint extends QdrantPoint {
   score: number;
 }
 
+interface QdrantQueryResult {
+  points: QdrantScoredPoint[];
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 const METRIC_TO_QDRANT: Record<DistanceMetric, string> = {
@@ -118,6 +122,15 @@ function pointVector(v: QdrantPoint["vector"]): number[] | undefined {
 export class QdrantConnector implements VectorConnector {
   readonly config: ConnectionConfig;
   private readonly http: HttpClient;
+  /**
+   * Qdrant Cloud Inference (https://qdrant.tech/cloud-inference/) has no
+   * per-collection config to detect — a Document `{text, model}` can be
+   * sent in place of a raw vector on any call, for any model, at any time.
+   * So which model to use is a per-connection choice the user makes (like
+   * Pinecone's namespace), not something we read off the collection.
+   */
+  private readonly inferenceModel?: string;
+  private readonly inferenceField: string;
 
   constructor(config: ConnectionConfig) {
     this.config = config;
@@ -126,6 +139,12 @@ export class QdrantConnector implements VectorConnector {
       headers: config.apiKey ? { "api-key": config.apiKey } : undefined,
       bridgeUrl: typeof config.options?.["bridgeUrl"] === "string" ? config.options["bridgeUrl"] : undefined,
     });
+    this.inferenceModel =
+      typeof config.options?.["inferenceModel"] === "string" && config.options["inferenceModel"]
+        ? config.options["inferenceModel"]
+        : undefined;
+    this.inferenceField =
+      (typeof config.options?.["inferenceField"] === "string" && config.options["inferenceField"]) || "text";
   }
 
   capabilities(): ConnectorCapabilities {
@@ -191,6 +210,8 @@ export class QdrantConnector implements VectorConnector {
         type: QDRANT_TYPE_MAP[spec.data_type] ?? "unknown",
         indexed: true, // presence in payload_schema means an index exists
       })),
+      serverVectorizer: this.inferenceModel,
+      serverVectorizerField: this.inferenceModel ? this.inferenceField : undefined,
       raw: detail as unknown as Json,
     };
   }
@@ -242,9 +263,37 @@ export class QdrantConnector implements VectorConnector {
 
   async upsertRecords(collection: string, records: VectorRecord[]): Promise<UpsertResult> {
     await this.http.put(`/collections/${encodeURIComponent(collection)}/points?wait=true`, {
-      points: records.map((r) => ({ id: r.id, vector: r.vector, payload: r.payload })),
+      points: records.map((r) => ({ id: r.id, vector: this.vectorFor(r), payload: r.payload })),
     });
     return { upserted: records.length };
+  }
+
+  /** Integrated-inference indexes only: search by raw text via Qdrant Cloud Inference. */
+  async searchByText(
+    collection: string,
+    query: { text: string; limit: number; filter?: Json },
+  ): Promise<SearchResult[]> {
+    if (!this.inferenceModel) {
+      throw new ConnectorError(
+        "No Qdrant Cloud Inference model configured on this connection — set one under Advanced settings.",
+        "qdrant",
+      );
+    }
+    const res = await this.http.post<QdrantEnvelope<QdrantQueryResult>>(
+      `/collections/${encodeURIComponent(collection)}/points/query`,
+      {
+        query: { text: query.text, model: this.inferenceModel },
+        limit: query.limit,
+        filter: query.filter,
+        with_payload: true,
+      },
+    );
+    return res.result.points.map((p) => ({
+      id: p.id,
+      score: p.score,
+      payload: p.payload ?? {},
+      vector: pointVector(p.vector),
+    }));
   }
 
   async updatePayload(collection: string, id: string | number, payload: Record<string, unknown>): Promise<void> {
@@ -305,6 +354,25 @@ export class QdrantConnector implements VectorConnector {
 
   private toRecord(p: QdrantPoint): VectorRecord {
     return { id: p.id, payload: p.payload ?? {}, vector: pointVector(p.vector) };
+  }
+
+  /** A raw vector if the record has one; otherwise a Document for Qdrant to embed server-side. */
+  private vectorFor(r: VectorRecord): unknown {
+    if (r.vector && r.vector.length > 0) return r.vector;
+    if (!this.inferenceModel) {
+      throw new ConnectorError(
+        `Record ${r.id} has no vector and no Qdrant Cloud Inference model is configured — set one under Advanced settings, or supply a vector for every record.`,
+        "qdrant",
+      );
+    }
+    const text = r.payload[this.inferenceField];
+    if (typeof text !== "string" || text.trim() === "") {
+      throw new ConnectorError(
+        `Record ${r.id} has no "${this.inferenceField}" field to embed — this connection embeds from that field.`,
+        "qdrant",
+      );
+    }
+    return { text, model: this.inferenceModel };
   }
 }
 
