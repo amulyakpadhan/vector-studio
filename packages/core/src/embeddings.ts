@@ -2,14 +2,20 @@ import { ConnectorError } from "./connector.ts";
 import { HttpClient } from "./http.ts";
 
 /** Providers @vyn/core knows how to call directly for text → vector embedding. */
-export type EmbeddingProvider = "openai" | "cohere" | "voyage";
+export type EmbeddingProvider = "openai" | "cohere" | "voyage" | "huggingface" | "ollama";
+
+/** Providers that need no API key at all (self-hosted, no auth). */
+export const KEYLESS_PROVIDERS: readonly EmbeddingProvider[] = ["ollama"];
 
 /** Client-side embedding setup, stored alongside a connection. Never leaves the machine. */
 export interface EmbeddingConfig {
   provider: EmbeddingProvider;
-  apiKey: string;
+  /** Required for every provider except the keyless ones (currently just Ollama). */
+  apiKey?: string;
   /** Defaults to a sensible current model per provider when omitted. */
   model?: string;
+  /** Self-hosted server URL — Ollama only. Defaults to http://localhost:11434. */
+  baseUrl?: string;
 }
 
 /** A model a provider offers, with the vector size it produces natively. */
@@ -44,6 +50,22 @@ export const EMBEDDING_MODELS: Record<EmbeddingProvider, EmbeddingModelInfo[]> =
     { id: "voyage-3-large", dim: 1024 },
     { id: "voyage-code-3", dim: 1024 },
   ],
+  // Free-tier serverless inference (rate-limited) via a Hugging Face access token —
+  // https://huggingface.co/settings/tokens. Open-source models, hosted by HF.
+  huggingface: [
+    { id: "sentence-transformers/all-MiniLM-L6-v2", dim: 384 },
+    { id: "BAAI/bge-small-en-v1.5", dim: 384 },
+    { id: "BAAI/bge-base-en-v1.5", dim: 768 },
+    { id: "sentence-transformers/all-mpnet-base-v2", dim: 768 },
+    { id: "intfloat/multilingual-e5-base", dim: 768 },
+  ],
+  // Self-hosted, open-source, no API key — runs against a local Ollama server
+  // (https://ollama.com). Whatever models the user has pulled with `ollama pull`.
+  ollama: [
+    { id: "nomic-embed-text", dim: 768 },
+    { id: "mxbai-embed-large", dim: 1024 },
+    { id: "all-minilm", dim: 384 },
+  ],
 };
 
 export function defaultModelFor(provider: EmbeddingProvider): string {
@@ -60,6 +82,8 @@ const BATCH_LIMIT: Record<EmbeddingProvider, number> = {
   openai: 96,
   cohere: 96,
   voyage: 128,
+  huggingface: 32,
+  ollama: 64,
 };
 
 /**
@@ -92,7 +116,7 @@ export async function embedTexts(config: EmbeddingConfig, texts: string[], opts:
   const out: number[][] = [];
   for (let i = 0; i < texts.length; i += limit) {
     const chunk = texts.slice(i, i + limit);
-    const vectors = await embedBatch(config.provider, config.apiKey, model, chunk, inputType, opts);
+    const vectors = await embedBatch(config, model, chunk, inputType, opts);
     if (vectors.length !== chunk.length) {
       throw new ConnectorError(
         `${config.provider} returned ${vectors.length} embeddings for ${chunk.length} inputs`,
@@ -114,20 +138,27 @@ export async function embedText(config: EmbeddingConfig, text: string, opts: Emb
 // ─── per-provider batch calls ────────────────────────────────────────────────
 
 function embedBatch(
-  provider: EmbeddingProvider,
-  apiKey: string,
+  config: EmbeddingConfig,
   model: string,
   texts: string[],
   inputType: EmbedInputType,
   opts: EmbedOptions,
 ): Promise<number[][]> {
+  const { provider, apiKey, baseUrl } = config;
+  if (!apiKey && !KEYLESS_PROVIDERS.includes(provider)) {
+    throw new ConnectorError(`${provider} requires an API key`, "embeddings");
+  }
   switch (provider) {
     case "openai":
-      return openaiBatch(apiKey, model, texts, opts);
+      return openaiBatch(apiKey!, model, texts, opts);
     case "cohere":
-      return cohereBatch(apiKey, model, texts, inputType, opts.bridgeUrl);
+      return cohereBatch(apiKey!, model, texts, inputType, opts.bridgeUrl);
     case "voyage":
-      return voyageBatch(apiKey, model, texts, inputType, opts.bridgeUrl);
+      return voyageBatch(apiKey!, model, texts, inputType, opts.bridgeUrl);
+    case "huggingface":
+      return huggingfaceBatch(apiKey!, model, texts, opts.bridgeUrl);
+    case "ollama":
+      return ollamaBatch(baseUrl, model, texts, opts.bridgeUrl);
     default:
       throw new ConnectorError(`Unknown embedding provider "${provider}"`, "embeddings");
   }
@@ -196,4 +227,49 @@ async function voyageBatch(
   });
   if (!res.data?.length) throw new ConnectorError("Voyage returned no embeddings", "embeddings");
   return ordered(res.data);
+}
+
+/**
+ * Hugging Face's serverless Inference API — free tier, rate-limited, for
+ * any hosted sentence-transformers-style model. Needs the user's own (free)
+ * HF access token: https://huggingface.co/settings/tokens.
+ */
+async function huggingfaceBatch(
+  apiKey: string,
+  model: string,
+  texts: string[],
+  bridgeUrl?: string,
+): Promise<number[][]> {
+  const http = new HttpClient("huggingface-embeddings", {
+    baseUrl: "https://router.huggingface.co",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    bridgeUrl,
+  });
+  const res = await http.post<unknown>(`/hf-inference/models/${model}/pipeline/feature-extraction`, {
+    inputs: texts,
+  });
+  if (!Array.isArray(res) || res.length !== texts.length || !Array.isArray(res[0])) {
+    throw new ConnectorError(
+      "Hugging Face returned an unexpected shape — pick a model that outputs one pooled vector per input.",
+      "embeddings",
+    );
+  }
+  return res as number[][];
+}
+
+/**
+ * A local Ollama server (https://ollama.com) — fully self-hosted, open
+ * source, no API key at all. The user must have already run
+ * `ollama pull <model>` for whichever model they select.
+ */
+async function ollamaBatch(baseUrl: string | undefined, model: string, texts: string[], bridgeUrl?: string): Promise<number[][]> {
+  const http = new HttpClient("ollama-embeddings", {
+    baseUrl: (baseUrl?.trim() || "http://localhost:11434").replace(/\/+$/, ""),
+    bridgeUrl,
+  });
+  const res = await http.post<{ embeddings: number[][] }>("/api/embed", { model, input: texts });
+  if (!res.embeddings?.length) {
+    throw new ConnectorError(`Ollama returned no embeddings — is "${model}" pulled? (ollama pull ${model})`, "embeddings");
+  }
+  return res.embeddings;
 }
