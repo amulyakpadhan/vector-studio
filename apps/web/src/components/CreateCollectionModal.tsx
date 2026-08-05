@@ -142,6 +142,12 @@ export function CreateCollectionModal({ connector, onClose, onCreated }: Props) 
                   </option>
                 ))}
               </select>
+              {isPinecone && caps.sparseVectors && (
+                <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 6 }}>
+                  Planning to use sparse or dense+sparse hybrid vectors? Pick <strong>dot</strong> — Pinecone only
+                  supports sparse values on dot-product indexes.
+                </div>
+              )}
             </div>
           </div>
         )}

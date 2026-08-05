@@ -12,6 +12,7 @@ import {
 } from "@vyn/core";
 import { resolveEmbedding, boundModelFor, type SavedConnection } from "@/lib/store";
 import { autoDimensions } from "@/lib/embed";
+import { parseSparseVector } from "@/lib/sparseVector";
 import { RecordDrawer } from "./RecordDrawer";
 import { FilterBar } from "./FilterBar";
 
@@ -57,6 +58,7 @@ export function SearchView({ connector, conn, collection, dimension, serverVecto
   const [text, setText] = useState("");
   const [recordId, setRecordId] = useState("");
   const [vectorText, setVectorText] = useState("");
+  const [sparseText, setSparseText] = useState("");
   const [limit, setLimit] = useState(10);
   const [alpha, setAlpha] = useState(0.5);
   const [model, setModel] = useState(
@@ -130,8 +132,10 @@ export function SearchView({ connector, conn, collection, dimension, serverVecto
         }
         hits = await connector.vectorSearch(collection, { vector: rec.vector, limit, filter });
       } else {
-        const parsed = parseVector(vectorText);
-        hits = await connector.vectorSearch(collection, { vector: parsed, limit, filter });
+        const parsed = vectorText.trim() ? parseVector(vectorText) : [];
+        const sparseVector = caps.sparseVectors && sparseText.trim() ? parseSparseVector(sparseText) : undefined;
+        if (parsed.length === 0 && !sparseVector) throw new Error("Enter a dense vector, a sparse vector, or both.");
+        hits = await connector.vectorSearch(collection, { vector: parsed, sparseVector, limit, filter });
       }
       setResults(hits);
     } catch (err) {
@@ -179,7 +183,7 @@ export function SearchView({ connector, conn, collection, dimension, serverVecto
           <input
             className="search-input"
             style={{ fontFamily: "var(--mono)", fontSize: 12.5 }}
-            placeholder="[0.12, -0.03, …]"
+            placeholder={caps.sparseVectors ? "[0.12, -0.03, …] (optional if sparse is set below)" : "[0.12, -0.03, …]"}
             value={vectorText}
             onChange={(e) => setVectorText(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && run()}
@@ -200,6 +204,23 @@ export function SearchView({ connector, conn, collection, dimension, serverVecto
           {busy ? <span className="spinner" /> : "Search"}
         </button>
       </div>
+
+      {mode === "vector" && caps.sparseVectors && (
+        <div className="field" style={{ maxWidth: 480 }}>
+          <label>Sparse vector (optional — dense+sparse hybrid)</label>
+          <textarea
+            className="input"
+            style={{ minHeight: 60, fontFamily: "var(--mono)", fontSize: 12.5, resize: "vertical" }}
+            placeholder='{"indices": [3, 91], "values": [0.5, 0.25]}'
+            value={sparseText}
+            onChange={(e) => setSparseText(e.target.value)}
+          />
+          <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 6 }}>
+            Combine with the dense vector above for hybrid scoring, or leave the dense vector blank to search by
+            sparse alone. The index's metric must be "dot" for this to work.
+          </div>
+        </div>
+      )}
 
       {mode === "hybrid" && (
         <div className="field" style={{ maxWidth: 420 }}>
@@ -295,7 +316,10 @@ export function SearchView({ connector, conn, collection, dimension, serverVecto
         {mode === "hybrid" && "Blends keyword and vector relevance."}
         {mode === "semantic" && "Runs a nearest-neighbor vector search — works on any engine."}
         {mode === "similar" && "Finds the nearest neighbors of an existing record, using its stored vector."}
-        {mode === "vector" && "Paste a raw query vector as a JSON array."}
+        {mode === "vector" &&
+          (caps.sparseVectors
+            ? "Paste a raw dense query vector, a sparse one, or both for a dense+sparse hybrid query."
+            : "Paste a raw query vector as a JSON array.")}
       </div>
 
       {caps.payloadFilters && (

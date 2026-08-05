@@ -4,6 +4,7 @@ import { useState } from "react";
 import { embedText, defaultModelFor, EMBEDDING_MODELS, type VectorConnector, type VectorRecord } from "@vyn/core";
 import { resolveEmbedding, boundModelFor, useConnections, type SavedConnection } from "@/lib/store";
 import { autoDimensions } from "@/lib/embed";
+import { parseSparseVector } from "@/lib/sparseVector";
 import { useEscape } from "@/lib/useEscape";
 
 interface Props {
@@ -35,6 +36,7 @@ export function AddRecordModal({
   const embedding = conn ? resolveEmbedding(conn) : undefined;
   const boundModel = conn ? boundModelFor(conn, collection) : undefined;
   const hasEmbedding = !!embedding;
+  const caps = connector.capabilities();
 
   const [id, setId] = useState("");
   const [payloadText, setPayloadText] = useState(
@@ -42,6 +44,7 @@ export function AddRecordModal({
   );
   const [vectorMode, setVectorMode] = useState<VectorMode>(hasEmbedding && !serverVectorizer ? "embed" : "paste");
   const [vectorText, setVectorText] = useState("");
+  const [sparseText, setSparseText] = useState("");
   const [embedSource, setEmbedSource] = useState("");
   const [model, setModel] = useState(
     boundModel ?? embedding?.model ?? (embedding ? defaultModelFor(embedding.provider) : ""),
@@ -71,6 +74,7 @@ export function AddRecordModal({
     setBusy(true);
     try {
       let vector: number[] | undefined;
+      let sparseVector: VectorRecord["sparseVector"];
       let usedModel: string | undefined;
 
       if (serverVectorizer) {
@@ -86,12 +90,17 @@ export function AddRecordModal({
           bridgeUrl: conn.bridgeUrl,
         });
         usedModel = effectiveModel;
-      } else if (vectorText.trim()) {
-        const parsed = JSON.parse(vectorText) as unknown;
-        if (!Array.isArray(parsed) || !parsed.every((n) => typeof n === "number")) {
-          throw new Error("Vector must be a JSON array of numbers.");
+      } else {
+        if (vectorText.trim()) {
+          const parsed = JSON.parse(vectorText) as unknown;
+          if (!Array.isArray(parsed) || !parsed.every((n) => typeof n === "number")) {
+            throw new Error("Vector must be a JSON array of numbers.");
+          }
+          vector = parsed as number[];
         }
-        vector = parsed as number[];
+        if (caps.sparseVectors && sparseText.trim()) {
+          sparseVector = parseSparseVector(sparseText);
+        }
       }
 
       if (dimension != null && vector && vector.length !== dimension) {
@@ -102,6 +111,7 @@ export function AddRecordModal({
         id: id.trim() !== "" ? coerceId(id.trim()) : crypto.randomUUID(),
         payload: payload as VectorRecord["payload"],
         vector,
+        sparseVector,
       };
       await connector.upsertRecords(collection, [record]);
       if (usedModel && conn) bindEmbeddingModel(conn.id, collection, usedModel);
@@ -221,13 +231,29 @@ export function AddRecordModal({
                 )}
               </>
             ) : (
-              <textarea
-                className="input"
-                style={{ minHeight: 80, fontFamily: "var(--mono)", fontSize: 12.5, resize: "vertical" }}
-                placeholder={dimension ? `[${Array(Math.min(dimension, 3)).fill("0.0").join(", ")}, …]` : "[0.12, -0.4, …]"}
-                value={vectorText}
-                onChange={(e) => setVectorText(e.target.value)}
-              />
+              <>
+                <textarea
+                  className="input"
+                  style={{ minHeight: 80, fontFamily: "var(--mono)", fontSize: 12.5, resize: "vertical" }}
+                  placeholder={dimension ? `[${Array(Math.min(dimension, 3)).fill("0.0").join(", ")}, …]` : "[0.12, -0.4, …]"}
+                  value={vectorText}
+                  onChange={(e) => setVectorText(e.target.value)}
+                />
+                {caps.sparseVectors && (
+                  <div style={{ marginTop: 10 }}>
+                    <label style={{ display: "block", fontSize: 12.5, color: "var(--text-dim)", marginBottom: 6 }}>
+                      Sparse vector (optional)
+                    </label>
+                    <textarea
+                      className="input"
+                      style={{ minHeight: 60, fontFamily: "var(--mono)", fontSize: 12.5, resize: "vertical" }}
+                      placeholder='{"indices": [3, 91], "values": [0.5, 0.25]}'
+                      value={sparseText}
+                      onChange={(e) => setSparseText(e.target.value)}
+                    />
+                  </div>
+                )}
+              </>
             )}
             <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 6 }}>
               {dimension != null ? `This collection expects ${dimension} dimensions. ` : ""}
