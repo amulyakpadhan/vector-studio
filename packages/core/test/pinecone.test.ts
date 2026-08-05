@@ -41,6 +41,17 @@ test("api key is sent as Api-Key header to the control plane", async () => {
   assert.ok(calls[0]?.url.startsWith("https://api.pinecone.io"));
 });
 
+test("control-plane calls always hit api.pinecone.io, even if a data-plane/index URL was saved on the connection", async () => {
+  const calls = stubFetch({ "GET /indexes": { indexes: [] } });
+  const c = new PineconeConnector({
+    engine: "pinecone",
+    url: "https://my-index-abc123.svc.us-east-1-aws.pinecone.io",
+    apiKey: "pk",
+  });
+  await c.testConnection();
+  assert.ok(calls[0]?.url.startsWith("https://api.pinecone.io/indexes"));
+});
+
 test("listCollections maps indexes and pulls counts from the data plane", async () => {
   stubFetch({
     "GET /indexes": { indexes: [INDEX] },

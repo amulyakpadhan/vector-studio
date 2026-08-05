@@ -118,9 +118,13 @@ export class PineconeConnector implements VectorConnector {
     this.apiKey = config.apiKey;
     this.bridgeUrl = typeof config.options?.["bridgeUrl"] === "string" ? config.options["bridgeUrl"] : undefined;
     this.namespace = typeof config.options?.["namespace"] === "string" && config.options["namespace"] ? config.options["namespace"] : undefined;
-    // config.url is optional for Pinecone; the control plane host is fixed.
+    // The control-plane host is always api.pinecone.io — Pinecone has no
+    // per-project/environment URL to configure. Data-plane hosts are
+    // per-index and discovered dynamically via describe(), so config.url
+    // (if the user set one, e.g. pasted an index host) must never override
+    // this or /indexes and friends 404 against the wrong host.
     this.control = new HttpClient("pinecone", {
-      baseUrl: config.url?.trim() || CONTROL_PLANE,
+      baseUrl: CONTROL_PLANE,
       headers: this.headers(),
       bridgeUrl: this.bridgeUrl,
     });
