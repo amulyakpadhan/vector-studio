@@ -152,6 +152,44 @@ test("getSchema infers dimension from a named vector, not just the legacy `vecto
   assert.equal(schema.metric, "cosine");
 });
 
+test("getSchema reads a named vector's vectorizer from vectorConfig, not the (absent) legacy field", async () => {
+  const classWithVectorizer = {
+    class: "ImportDutyMaster",
+    properties: [{ name: "hs_code", dataType: ["text"] }],
+    // No top-level `vectorizer` at all — matches what a real named-vector class returns.
+    vectorConfig: {
+      default: {
+        vectorIndexConfig: { distance: "cosine" },
+        vectorizer: { "text2vec-openai": { model: "text-embedding-3-small" } },
+      },
+    },
+  };
+  stubFetch((method, path) => {
+    if (path === "/v1/schema/ImportDutyMaster") return classWithVectorizer;
+    if (path.startsWith("/v1/objects")) return { objects: [{ id: "a", vectors: { default: [0.1, 0.2] } }] };
+    return {};
+  });
+  const schema = await conn().getSchema("ImportDutyMaster");
+  assert.equal(schema.serverVectorizer, "text2vec-openai");
+});
+
+test("getSchema reports no vectorizer for a named vector with vectorizer: none", async () => {
+  const classNoVectorizer = {
+    class: "ImportDutyMaster",
+    properties: [{ name: "hs_code", dataType: ["text"] }],
+    vectorConfig: {
+      default: { vectorIndexConfig: { distance: "cosine" }, vectorizer: { none: {} } },
+    },
+  };
+  stubFetch((method, path) => {
+    if (path === "/v1/schema/ImportDutyMaster") return classNoVectorizer;
+    if (path.startsWith("/v1/objects")) return { objects: [{ id: "a", vectors: { default: [0.1, 0.2] } }] };
+    return {};
+  });
+  const schema = await conn().getSchema("ImportDutyMaster");
+  assert.equal(schema.serverVectorizer, undefined);
+});
+
 test("listRecords (REST) surfaces a named vector as the record's vector", async () => {
   stubFetch((method, path) => {
     if (path.startsWith("/v1/objects")) {
