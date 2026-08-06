@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CollectionInfo, DbEngine } from "@vyn/core";
 import { useConnections } from "@/lib/store";
 import { connectorFor } from "@/lib/connector";
@@ -13,6 +13,7 @@ import { CreateCollectionModal } from "./CreateCollectionModal";
 
 export function Studio({ connectionId }: { connectionId: string }) {
   const conn = useConnections((s) => s.get(connectionId));
+  const qc = useQueryClient();
   const [hydrated, setHydrated] = useState(false);
   // Open collections, tab-strip style — order is the tab order, last opened wins focus.
   const [openTabs, setOpenTabs] = useState<string[]>([]);
@@ -35,6 +36,19 @@ export function Studio({ connectionId }: { connectionId: string }) {
   function openCollection(name: string) {
     setOpenTabs((tabs) => (tabs.includes(name) ? tabs : [...tabs, name]));
     setActive(name);
+  }
+
+  /**
+   * Drop a deleted collection from the sidebar immediately instead of waiting
+   * on a full refetch — listCollections() does a per-collection stats/count
+   * round-trip for every entry, so with a dozen-plus collections a plain
+   * refetch() can take several seconds, during which the just-deleted one
+   * would otherwise still be sitting there (stale-while-revalidate keeps
+   * showing the old list until the new one resolves).
+   */
+  function removeCollection(name: string) {
+    qc.setQueryData<CollectionInfo[]>(["collections", connectionId], (old) => old?.filter((c) => c.name !== name));
+    collections.refetch();
   }
 
   function closeTab(name: string) {
@@ -197,7 +211,7 @@ export function Studio({ connectionId }: { connectionId: string }) {
               collection={active}
               onDeleted={() => {
                 closeTab(active);
-                collections.refetch();
+                removeCollection(active);
               }}
             />
           ) : (
