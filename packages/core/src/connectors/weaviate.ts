@@ -71,8 +71,13 @@ interface WeaviateClass {
   vectorizer?: string;
   properties?: WeaviateProperty[];
   vectorIndexConfig?: { distance?: string };
-  /** Present instead of the top-level vectorizer/vectorIndexConfig when the class uses named vectors. */
-  vectorConfig?: Record<string, { vectorIndexConfig?: { distance?: string } }>;
+  /**
+   * Present instead of the top-level vectorizer/vectorIndexConfig when the class uses named
+   * vectors. `vectorizer` here is an object keyed by module name (e.g.
+   * `{ "text2vec-openai": { model: "..." } }`), not a bare string like the legacy top-level
+   * field — verified against Weaviate's own server source (models.VectorConfig / its tests).
+   */
+  vectorConfig?: Record<string, { vectorIndexConfig?: { distance?: string }; vectorizer?: Record<string, unknown> }>;
 }
 
 interface WeaviateObject {
@@ -111,6 +116,22 @@ function primaryVectorName(c: WeaviateClass): string | undefined {
 function classDistance(c: WeaviateClass): string | undefined {
   const vectorName = primaryVectorName(c);
   return vectorName ? c.vectorConfig?.[vectorName]?.vectorIndexConfig?.distance : c.vectorIndexConfig?.distance;
+}
+
+/**
+ * The class's configured vectorizer module name, from whichever of the two shapes it uses.
+ * For a named-vector class this is nested under vectorConfig[name].vectorizer as an object
+ * keyed by module name (not a plain string like the legacy top-level field) — a class that
+ * genuinely has, say, text2vec-openai attached would otherwise read as unconfigured.
+ */
+function classVectorizerName(c: WeaviateClass): string | undefined {
+  const vectorName = primaryVectorName(c);
+  if (vectorName) {
+    const named = c.vectorConfig?.[vectorName]?.vectorizer;
+    const moduleName = named ? Object.keys(named)[0] : undefined;
+    return moduleName && moduleName !== "none" ? moduleName : undefined;
+  }
+  return c.vectorizer && c.vectorizer !== "none" ? c.vectorizer : undefined;
 }
 
 /**
@@ -221,7 +242,7 @@ export class WeaviateConnector implements VectorConnector {
         name: p.name,
         type: WEAVIATE_TYPE_MAP[p.dataType[0] ?? ""] ?? "unknown",
       })),
-      serverVectorizer: c.vectorizer && c.vectorizer !== "none" ? c.vectorizer : undefined,
+      serverVectorizer: classVectorizerName(c),
       raw: c as unknown as Json,
     };
   }
@@ -385,7 +406,7 @@ export class WeaviateConnector implements VectorConnector {
     this.metaCache.set(c.class, {
       properties: (c.properties ?? []).map((p) => p.name),
       distance: distance ? WEAVIATE_TO_METRIC[distance] : undefined,
-      vectorizer: c.vectorizer,
+      vectorizer: classVectorizerName(c),
       vectorName: primaryVectorName(c),
     });
   }
