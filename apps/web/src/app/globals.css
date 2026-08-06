@@ -628,11 +628,24 @@ tbody tr:hover {
   flex: none;
 }
 .main {
-  padding: 22px 24px 24px;
+  /* No top padding: .doctabs (the first child) supplies its own top spacing
+     via padding instead, so it can sit sticky-at-top without a negative
+     margin — position: sticky and a negative margin on the same axis don't
+     compose correctly and clipped the tab strip (see .doctabs below). */
+  padding: 0 24px 24px;
   overflow: auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+/* .main now has a hard bounded height (see .studio) so its own overflow:
+   auto can scroll instead of the whole page. Without flex-shrink: 0, a
+   column flex container squeezes its children to fit rather than letting
+   them overflow — the tab strip (thin, easily compressible) visibly
+   collapsed to a sliver under the taller collection view instead of the
+   whole thing just scrolling. */
+.main > * {
+  flex-shrink: 0;
 }
 
 /* ─── document tab strip (open collections, VS Code / Compass style) ────── */
@@ -643,10 +656,21 @@ tbody tr:hover {
   gap: 2px;
   overflow-x: auto;
   scrollbar-width: thin;
-  margin: -22px -24px 18px;
+  /* Horizontal-only bleed to .main's edges — a *vertical* negative margin
+     here would fight position: sticky's own offset math and clip the tab
+     strip, so .main's top padding was moved into this element's own
+     padding-top instead of being canceled out this way. */
+  margin: 0 -24px 18px;
   padding: 12px 24px 0;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent);
+  /* .main scrolls on its own now (independent of the sidebar), so the tab
+     strip needs to stick to its top instead of scrolling away with the
+     record table — an opaque background (not the old translucent gradient)
+     keeps scrolled rows from showing through underneath it. */
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: linear-gradient(180deg, var(--bg-elev) 0%, var(--bg) 100%);
 }
 .doctab {
   position: relative;
