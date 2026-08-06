@@ -9,12 +9,15 @@ import {
   type FilterCondition,
   type FilterOp,
   type Json,
+  type SchemaField,
 } from "@vyn/core";
 
 interface Props {
   engine: DbEngine;
-  /** Known payload field names, offered as suggestions. */
-  fields?: string[];
+  /** Known payload fields (name + type) — offered as suggestions, and used to
+   * type filter values correctly instead of guessing from the raw text (a
+   * numeric-looking string like a "0901" HS code is still `text`, not a number). */
+  fields?: SchemaField[];
   /** Called with the engine-native filter object (or undefined to clear). */
   onApply: (filter: Json | undefined) => void;
 }
@@ -34,6 +37,7 @@ export function FilterBar({ engine, fields, onApply }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const ops = FILTER_OPS.filter((o) => opSupported(engine, o.op));
+  const fieldTypes = new Map((fields ?? []).map((f) => [f.name, f.type]));
 
   function set(i: number, patch: Partial<Row>) {
     setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -49,7 +53,7 @@ export function FilterBar({ engine, fields, onApply }: Props) {
     setError(null);
     const conditions: FilterCondition[] = rows
       .filter((r) => r.field.trim() !== "" && r.value.trim() !== "")
-      .map((r) => ({ field: r.field.trim(), op: r.op, value: coerce(r.op, r.value) }));
+      .map((r) => ({ field: r.field.trim(), op: r.op, value: coerce(r.op, r.value, fieldTypes.get(r.field.trim())) }));
     if (conditions.length === 0) {
       setActive(false);
       onApply(undefined);
@@ -115,7 +119,7 @@ export function FilterBar({ engine, fields, onApply }: Props) {
       {fields && fields.length > 0 && (
         <datalist id="filter-fields">
           {fields.map((f) => (
-            <option key={f} value={f} />
+            <option key={f.name} value={f.name} />
           ))}
         </datalist>
       )}
@@ -140,13 +144,25 @@ export function FilterBar({ engine, fields, onApply }: Props) {
   );
 }
 
-/** Turn the raw text value into a typed Json value based on the operator. */
-function coerce(op: FilterOp, raw: string): Json {
-  if (op === "in") return raw.split(",").map((s) => scalar(s.trim()));
-  return scalar(raw.trim());
+/**
+ * Turn the raw text value into a typed Json value based on the operator and,
+ * when known, the field's actual schema type — so a numeric-looking string
+ * (an HS code, a zip code, an ID with a leading zero) stored as `text` isn't
+ * silently sent as a number just because it happens to look like one.
+ */
+function coerce(op: FilterOp, raw: string, knownType?: string): Json {
+  if (op === "in") return raw.split(",").map((s) => scalar(s.trim(), knownType));
+  return scalar(raw.trim(), knownType);
 }
 
-function scalar(s: string): Json {
+function scalar(s: string, knownType?: string): Json {
+  if (knownType === "text" || knownType === "geo") return s;
+  if (knownType === "boolean") return s === "true";
+  if (knownType === "number" || knownType === "integer") {
+    const n = Number(s);
+    return s !== "" && !Number.isNaN(n) ? n : s;
+  }
+  // Field type unknown (not in schema, e.g. an unindexed field) — best-effort guess from shape.
   if (s === "true") return true;
   if (s === "false") return false;
   if (s !== "" && !Number.isNaN(Number(s)) && /^-?\d+(\.\d+)?$/.test(s)) return Number(s);

@@ -6,6 +6,7 @@ import {
   defaultModelFor,
   EMBEDDING_MODELS,
   type Json,
+  type SchemaField,
   type SearchResult,
   type VectorConnector,
   type VectorRecord,
@@ -23,6 +24,8 @@ interface Props {
   dimension?: number;
   /** Name of the collection's server-side vectorizer (Weaviate), if any. */
   serverVectorizer?: string;
+  /** Known payload fields, so filter values get typed from the real schema instead of guessed. */
+  fields?: SchemaField[];
   onChanged: () => void;
 }
 
@@ -38,7 +41,7 @@ const MODE_LABELS: Record<Mode, string> = {
 
 const CUSTOM_MODEL = "__custom__";
 
-export function SearchView({ connector, conn, collection, dimension, serverVectorizer, onChanged }: Props) {
+export function SearchView({ connector, conn, collection, dimension, serverVectorizer, fields, onChanged }: Props) {
   const caps = connector.capabilities();
   const embedding = conn ? resolveEmbedding(conn) : undefined;
   const boundModel = conn ? boundModelFor(conn, collection) : undefined;
@@ -325,7 +328,7 @@ export function SearchView({ connector, conn, collection, dimension, serverVecto
       {caps.payloadFilters && (
         <div className="field">
           <label>Filter (optional)</label>
-          <FilterBar engine={caps.engine} onApply={setFilter} />
+          <FilterBar engine={caps.engine} fields={fields} onApply={setFilter} />
         </div>
       )}
 

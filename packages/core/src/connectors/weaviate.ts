@@ -28,7 +28,13 @@ import type {
  *   • GraphQL (/v1/graphql) — vector / keyword / hybrid search
  *
  * A Weaviate "class" is our collection; object "properties" are the payload;
- * the object "vector" is the vector. We target the default (unnamed) vector.
+ * the object "vector" is the vector — except when the class was created with
+ * *named* vectors (Weaviate's newer multi-vector-per-object config), in which
+ * case the vector lives under `vectors.<name>` instead of `vector`, both in
+ * REST responses and GraphQL's `_additional` block, and `nearVector` search
+ * needs an explicit `targetVectors: ["<name>"]`. We support exactly one named
+ * vector per class (the first one declared) — multi-named-vector classes are
+ * out of scope for now.
  */
 
 const METRIC_TO_WEAVIATE: Record<DistanceMetric, string> = {
@@ -65,6 +71,8 @@ interface WeaviateClass {
   vectorizer?: string;
   properties?: WeaviateProperty[];
   vectorIndexConfig?: { distance?: string };
+  /** Present instead of the top-level vectorizer/vectorIndexConfig when the class uses named vectors. */
+  vectorConfig?: Record<string, { vectorIndexConfig?: { distance?: string } }>;
 }
 
 interface WeaviateObject {
@@ -72,6 +80,7 @@ interface WeaviateObject {
   class?: string;
   properties?: Record<string, Json>;
   vector?: number[];
+  vectors?: Record<string, number[]>;
 }
 
 interface GraphQLResponse {
@@ -80,8 +89,8 @@ interface GraphQLResponse {
 }
 
 interface GraphQLHit {
-  _additional?: { id?: string; distance?: number; score?: string; vector?: number[] };
-  [prop: string]: Json | { id?: string; distance?: number; score?: string; vector?: number[] } | undefined;
+  _additional?: { id?: string; distance?: number; score?: string; vector?: number[]; vectors?: Record<string, number[]> };
+  [prop: string]: Json | { id?: string; distance?: number; score?: string; vector?: number[]; vectors?: Record<string, number[]> } | undefined;
 }
 
 /** Cached per-class facts we need to build GraphQL queries. */
@@ -89,6 +98,39 @@ interface ClassMeta {
   properties: string[];
   distance?: DistanceMetric;
   vectorizer?: string;
+  /** Name of this class's named vector, or undefined for the legacy single/unnamed vector. */
+  vectorName?: string;
+}
+
+/** The class's single named vector, if it uses named (not legacy unnamed) vectors. */
+function primaryVectorName(c: WeaviateClass): string | undefined {
+  return c.vectorConfig ? Object.keys(c.vectorConfig)[0] : undefined;
+}
+
+/** The class's configured distance metric, from whichever of the two shapes it uses. */
+function classDistance(c: WeaviateClass): string | undefined {
+  const vectorName = primaryVectorName(c);
+  return vectorName ? c.vectorConfig?.[vectorName]?.vectorIndexConfig?.distance : c.vectorIndexConfig?.distance;
+}
+
+/**
+ * Extract a vector from a REST object or GraphQL `_additional` block. Only
+ * one of `vector` (legacy unnamed) or `vectors` (named) is ever populated by
+ * the server for a given object; when named, we support exactly one vector
+ * per class, so the first entry is always the right one.
+ */
+function extractVector(src: { vector?: number[]; vectors?: Record<string, number[]> }): number[] | undefined {
+  return src.vector ?? (src.vectors ? Object.values(src.vectors)[0] : undefined);
+}
+
+/** The GraphQL `_additional` sub-selection for the vector: `vector`, or `vectors { <name> }` when named. */
+function vectorSelection(vectorName?: string): string {
+  return vectorName ? `vectors { ${vectorName} }` : "vector";
+}
+
+/** The `, targetVectors: [...]` argument fragment `nearVector`/`hybrid` need for a named-vector class. */
+function targetVectorsArg(vectorName?: string): string {
+  return vectorName ? `, targetVectors: ["${vectorName}"]` : "";
 }
 
 export class WeaviateConnector implements VectorConnector {
@@ -149,10 +191,11 @@ export class WeaviateConnector implements VectorConnector {
         } catch {
           count = undefined;
         }
+        const distance = classDistance(c);
         return {
           name: c.class,
           count,
-          metric: c.vectorIndexConfig?.distance ? WEAVIATE_TO_METRIC[c.vectorIndexConfig.distance] : undefined,
+          metric: distance ? WEAVIATE_TO_METRIC[distance] : undefined,
         };
       }),
     );
@@ -169,10 +212,11 @@ export class WeaviateConnector implements VectorConnector {
     } catch {
       dimension = undefined;
     }
+    const distance = classDistance(c);
     return {
       name: collection,
       dimension,
-      metric: c.vectorIndexConfig?.distance ? WEAVIATE_TO_METRIC[c.vectorIndexConfig.distance] : undefined,
+      metric: distance ? WEAVIATE_TO_METRIC[distance] : undefined,
       fields: (c.properties ?? []).map((p) => ({
         name: p.name,
         type: WEAVIATE_TYPE_MAP[p.dataType[0] ?? ""] ?? "unknown",
@@ -226,7 +270,7 @@ export class WeaviateConnector implements VectorConnector {
   private async listFiltered(collection: string, opts: PageOpts): Promise<Page<VectorRecord>> {
     const meta = await this.classMeta(collection);
     // A plain Get can't compute a distance/score, so select id (+vector) only.
-    const extra = ["id", ...(opts.withVectors ? ["vector"] : [])].join(" ");
+    const extra = ["id", ...(opts.withVectors ? [vectorSelection(meta.vectorName)] : [])].join(" ");
     const fields = `${meta.properties.join(" ")} _additional { ${extra} }`;
     const offset = opts.cursor ? Number(opts.cursor) : 0;
     const where = whereArg(opts.filter);
@@ -245,12 +289,13 @@ export class WeaviateConnector implements VectorConnector {
   }
 
   async upsertRecords(collection: string, records: VectorRecord[]): Promise<UpsertResult> {
+    const meta = await this.classMeta(collection);
     const res = await this.http.post<unknown[]>("/v1/batch/objects", {
       objects: records.map((r) => ({
         class: collection,
         id: r.id !== undefined ? String(r.id) : undefined,
         properties: r.payload,
-        vector: r.vector,
+        ...(meta.vectorName ? { vectors: r.vector ? { [meta.vectorName]: r.vector } : undefined } : { vector: r.vector }),
       })),
     });
     return { upserted: Array.isArray(res) ? res.length : records.length };
@@ -276,10 +321,11 @@ export class WeaviateConnector implements VectorConnector {
     const meta = await this.classMeta(collection);
     // Only nearVector queries can compute `distance` — asking for it on a
     // keyword-only query has no vector to measure and Weaviate errors.
-    const fields = this.selectionFields(meta.properties, "distance", query.withVectors ?? false);
+    const fields = this.selectionFields(meta.properties, "distance", query.withVectors ?? false, meta.vectorName);
     const where = whereArg(query.filter);
+    const targetVectors = targetVectorsArg(meta.vectorName);
     const gql = `query Search($vec: [Float!], $limit: Int) {
-      Get { ${collection}(nearVector: { vector: $vec }, limit: $limit${where}) { ${fields} } }
+      Get { ${collection}(nearVector: { vector: $vec${targetVectors} }, limit: $limit${where}) { ${fields} } }
     }`;
     const hits = await this.runGet(collection, gql, { vec: query.vector, limit: query.limit });
     return hits.map((h) => this.toSearchResult(h, meta.properties, "distance"));
@@ -296,7 +342,7 @@ export class WeaviateConnector implements VectorConnector {
     // GraphQL rejects a declared-but-unused variable, so $vec only appears
     // in the operation signature when we actually reference it below.
     const args = hasVector
-      ? `hybrid: { query: $q, vector: $vec, alpha: ${alpha} }`
+      ? `hybrid: { query: $q, vector: $vec, alpha: ${alpha}${targetVectorsArg(meta.vectorName)} }`
       : query.mode === "hybrid"
         ? `hybrid: { query: $q, alpha: ${alpha} }`
         : `bm25: { query: $q }`;
@@ -333,10 +379,12 @@ export class WeaviateConnector implements VectorConnector {
   // ─── private ────────────────────────────────────────────────
 
   private cacheMeta(c: WeaviateClass): void {
+    const distance = classDistance(c);
     this.metaCache.set(c.class, {
       properties: (c.properties ?? []).map((p) => p.name),
-      distance: c.vectorIndexConfig?.distance ? WEAVIATE_TO_METRIC[c.vectorIndexConfig.distance] : undefined,
+      distance: distance ? WEAVIATE_TO_METRIC[distance] : undefined,
       vectorizer: c.vectorizer,
+      vectorName: primaryVectorName(c),
     });
   }
 
@@ -351,8 +399,13 @@ export class WeaviateConnector implements VectorConnector {
   /** GraphQL field selection: the payload props + the _additional block.
    * `scoreField` must match what the query type can actually produce —
    * requesting the wrong one causes a server-side error (see callers). */
-  private selectionFields(properties: string[], scoreField: "distance" | "score", withVector: boolean): string {
-    const extra = ["id", scoreField, ...(withVector ? ["vector"] : [])].join(" ");
+  private selectionFields(
+    properties: string[],
+    scoreField: "distance" | "score",
+    withVector: boolean,
+    vectorName?: string,
+  ): string {
+    const extra = ["id", scoreField, ...(withVector ? [vectorSelection(vectorName)] : [])].join(" ");
     return `${properties.join(" ")} _additional { ${extra} }`;
   }
 
@@ -378,7 +431,7 @@ export class WeaviateConnector implements VectorConnector {
   }
 
   private toRecord(o: WeaviateObject): VectorRecord {
-    return { id: o.id, payload: o.properties ?? {}, vector: o.vector };
+    return { id: o.id, payload: o.properties ?? {}, vector: extractVector(o) };
   }
 
   /** Build a plain record (no score) from a GraphQL Get hit — used by filtered browse. */
@@ -389,7 +442,7 @@ export class WeaviateConnector implements VectorConnector {
       const v = hit[p];
       if (v !== undefined) payload[p] = v as Json;
     }
-    return { id: add.id ?? "", payload, vector: add.vector };
+    return { id: add.id ?? "", payload, vector: extractVector(add) };
   }
 
   private toSearchResult(hit: GraphQLHit, properties: string[], scoreKey: "distance" | "score"): SearchResult {
@@ -403,7 +456,7 @@ export class WeaviateConnector implements VectorConnector {
     let score = 0;
     if (scoreKey === "distance" && typeof add.distance === "number") score = 1 - add.distance;
     else if (scoreKey === "score" && add.score !== undefined) score = parseFloat(add.score);
-    return { id: add.id ?? "", score, payload, vector: add.vector };
+    return { id: add.id ?? "", score, payload, vector: extractVector(add) };
   }
 }
 

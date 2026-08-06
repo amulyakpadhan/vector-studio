@@ -115,6 +115,78 @@ test("vectorSearch builds a GraphQL nearVector query and normalizes distance→s
   assert.match((gqlCall.body as any).query, /_additional\s*\{\s*id\s+distance\s*\}/);
 });
 
+// ─── named vectors ──────────────────────────────────────────────────────────
+// Classes created with Weaviate's newer named-vector config (as opposed to
+// the legacy single/unnamed vector) store the vector under `vectors.<name>`
+// in REST responses and `_additional { vectors { <name> } }` in GraphQL,
+// instead of the plain `vector` field — and search needs an explicit
+// `targetVectors`. Verified against the actual Weaviate server source.
+
+const NAMED_VECTOR_CLASS = {
+  class: "ImportDutyMaster",
+  properties: [{ name: "hs_code", dataType: ["text"] }],
+  vectorConfig: { default: { vectorIndexConfig: { distance: "cosine" } } },
+};
+
+test("getSchema infers dimension from a named vector, not just the legacy `vector` field", async () => {
+  stubFetch((method, path) => {
+    if (path === "/v1/schema/ImportDutyMaster") return NAMED_VECTOR_CLASS;
+    if (path.startsWith("/v1/objects")) {
+      return { objects: [{ id: "a", properties: { hs_code: "0901" }, vectors: { default: [0.1, 0.2, 0.3] } }] };
+    }
+    return {};
+  });
+  const schema = await conn().getSchema("ImportDutyMaster");
+  assert.equal(schema.dimension, 3);
+  assert.equal(schema.metric, "cosine");
+});
+
+test("listRecords (REST) surfaces a named vector as the record's vector", async () => {
+  stubFetch((method, path) => {
+    if (path.startsWith("/v1/objects")) {
+      return { objects: [{ id: "a", properties: { hs_code: "0901" }, vectors: { default: [0.1, 0.2] } }] };
+    }
+    return {};
+  });
+  const page = await conn().listRecords("ImportDutyMaster", { limit: 10, withVectors: true });
+  assert.deepEqual(page.items[0]!.vector, [0.1, 0.2]);
+});
+
+test("vectorSearch on a named-vector class sends targetVectors and reads `_additional.vectors`", async () => {
+  const calls = stubFetch((method, path) => {
+    if (path === "/v1/schema/ImportDutyMaster") return NAMED_VECTOR_CLASS;
+    if (path === "/v1/graphql") {
+      return {
+        data: {
+          Get: {
+            ImportDutyMaster: [
+              { hs_code: "0901", _additional: { id: "a", distance: 0.1, vectors: { default: [0.1, 0.2] } } },
+            ],
+          },
+        },
+      };
+    }
+    return {};
+  });
+  const hits = await conn().vectorSearch("ImportDutyMaster", { vector: [0.1, 0.2], limit: 5, withVectors: true });
+  assert.deepEqual(hits[0]!.vector, [0.1, 0.2]);
+  const gqlCall = calls.find((c) => c.path === "/v1/graphql")!;
+  assert.match((gqlCall.body as any).query, /targetVectors:\s*\["default"\]/);
+  assert.match((gqlCall.body as any).query, /vectors\s*\{\s*default\s*\}/);
+});
+
+test("upsertRecords into a named-vector class sends `vectors: {name: [...]}` instead of `vector`", async () => {
+  const calls = stubFetch((method, path) => {
+    if (path === "/v1/schema/ImportDutyMaster") return NAMED_VECTOR_CLASS;
+    return [{ id: "a" }];
+  });
+  await conn().upsertRecords("ImportDutyMaster", [{ id: "a", vector: [0.1, 0.2], payload: { hs_code: "0901" } }]);
+  const call = calls.find((c) => c.path === "/v1/batch/objects")!;
+  const obj = (call.body as any).objects[0];
+  assert.deepEqual(obj.vectors, { default: [0.1, 0.2] });
+  assert.ok(!("vector" in obj));
+});
+
 test("textSearch bm25 reads _additional.score and never requests distance", async () => {
   const calls = stubFetch((method, path) => {
     if (path === "/v1/schema/Docs") return DOCS_CLASS;

@@ -212,6 +212,7 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
           collection={collection}
           dimension={dim}
           serverVectorizer={schema.data?.serverVectorizer}
+          fields={schema.data?.fields}
           onChanged={refresh}
         />
       ) : (
@@ -253,7 +254,7 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
       {caps.filterBrowse && showFilter && (
         <FilterBar
           engine={caps.engine}
-          fields={schema.data?.fields.map((f) => f.name)}
+          fields={schema.data?.fields}
           onApply={applyBrowseFilter}
         />
       )}
