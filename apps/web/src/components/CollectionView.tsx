@@ -105,6 +105,23 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
     qc.invalidateQueries({ queryKey: ["stats", connectionId, collection] });
   }
 
+  /**
+   * Open the drawer immediately with the row data we already have (payload
+   * shows right away), then fetch the full record in the background to fill
+   * in the vector — the browse list never requests vectors (they'd bloat
+   * every page load for records nobody inspects), so `r` alone doesn't carry
+   * one except on Pinecone, whose fetch-by-id API can't omit it even when
+   * asked. The id check guards against a slower fetch for a previously
+   * clicked row landing after the user has already moved on to another one.
+   */
+  function inspectRecord(r: VectorRecord) {
+    setInspect(r);
+    connector
+      .getRecord(collection, r.id)
+      .then((full) => setInspect((cur) => (cur && String(cur.id) === String(r.id) ? full : cur)))
+      .catch(() => {});
+  }
+
   function toggleRow(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -302,16 +319,16 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
                       style={{ width: 15, height: 15, accentColor: "var(--accent)" }}
                     />
                   </td>
-                  <td className="cell-id" onClick={() => setInspect(r)}>
+                  <td className="cell-id" onClick={() => inspectRecord(r)}>
                     <span className="truncate">{rid}</span>
                   </td>
                   {columns.map((c) => (
-                    <td key={c} className="cell-mono" onClick={() => setInspect(r)}>
+                    <td key={c} className="cell-mono" onClick={() => inspectRecord(r)}>
                       <span className="truncate">{renderCell(r.payload[c])}</span>
                     </td>
                   ))}
                   {columns.length === 0 && (
-                    <td className="cell-mono" onClick={() => setInspect(r)}>
+                    <td className="cell-mono" onClick={() => inspectRecord(r)}>
                       <span className="truncate">{JSON.stringify(r.payload)}</span>
                     </td>
                   )}
