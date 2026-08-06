@@ -232,12 +232,14 @@ export class WeaviateConnector implements VectorConnector {
   }
 
   async createCollection(spec: CreateCollectionSpec): Promise<void> {
-    // vectorizer "none" → bring-your-own vectors; Weaviate infers dimension on
-    // first insert, so spec.dimension isn't needed up front.
+    // Default to "none" (bring-your-own vectors) unless a specific module name was
+    // requested — e.g. Clone passes the source collection's serverVectorizer through
+    // so the copy can keep auto-embedding, instead of silently losing it.
+    const vectorizer = typeof spec.options?.["vectorizer"] === "string" ? spec.options["vectorizer"] : "none";
     try {
       await this.http.post("/v1/schema", {
         class: spec.name,
-        vectorizer: "none",
+        vectorizer,
         vectorIndexConfig: { distance: METRIC_TO_WEAVIATE[spec.metric] },
       });
     } catch (err) {

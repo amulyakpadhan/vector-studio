@@ -87,6 +87,17 @@ test("createCollection maps euclidean → l2-squared with vectorizer none", asyn
   assert.equal((calls[0]!.body as any).vectorizer, "none");
 });
 
+test("createCollection honors an explicit vectorizer option — Clone passes the source's through", async () => {
+  const calls = stubFetch(() => ({}));
+  await conn().createCollection({
+    name: "New",
+    dimension: 8,
+    metric: "cosine",
+    options: { vectorizer: "text2vec-openai" },
+  });
+  assert.equal((calls[0]!.body as any).vectorizer, "text2vec-openai");
+});
+
 test("vectorSearch builds a GraphQL nearVector query and normalizes distance→similarity", async () => {
   const calls = stubFetch((method, path) => {
     if (path === "/v1/schema/Docs") return DOCS_CLASS;

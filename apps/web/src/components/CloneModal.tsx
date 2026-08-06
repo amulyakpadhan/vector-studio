@@ -98,6 +98,8 @@ export function CloneModal({ sourceConn, sourceConnector, collection, onClose }:
           name: targetName,
           dimension: schema?.dimension ?? 0,
           metric: schema?.metric ?? "cosine",
+          // Engines that don't understand this key (all but Weaviate today) just ignore it.
+          options: schema?.serverVectorizer ? { vectorizer: schema.serverVectorizer } : undefined,
         });
       }
     } catch (err) {
@@ -196,7 +198,11 @@ export function CloneModal({ sourceConn, sourceConnector, collection, onClose }:
                 <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 6 }}>
                   Created with the source's dimension
                   {sourceSchema.data?.dimension ? ` (${sourceSchema.data.dimension})` : ""} and metric
-                  {sourceSchema.data?.metric ? ` (${sourceSchema.data.metric})` : ""}.
+                  {sourceSchema.data?.metric ? ` (${sourceSchema.data.metric})` : ""}
+                  {sourceSchema.data?.serverVectorizer
+                    ? `, and its server-side vectorizer (${sourceSchema.data.serverVectorizer})`
+                    : ""}
+                  .
                 </div>
               </div>
             ) : (
