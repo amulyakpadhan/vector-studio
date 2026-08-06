@@ -24,27 +24,29 @@ export function ConnectionTabs() {
 
   return (
     <div className="conn-tabs">
-      {openConns.map((c) => (
-        <div key={c.id} className={`conn-tab ${c.id === activeId ? "active" : ""}`} onClick={() => setActive(c.id)}>
-          <span className="conn-tab-dot" style={{ background: colorForConnection(c.id) }} />
-          <span className="truncate" style={{ maxWidth: 140 }}>
-            {c.name}
-          </span>
-          <EngineBadge engine={c.engine} />
-          <button
-            className="conn-tab-close"
-            title="Close connection"
-            onClick={(e) => {
-              e.stopPropagation();
-              closeConnection(c.id);
-            }}
-          >
-            ✕
-          </button>
-        </div>
-      ))}
+      <div className="conn-tabs-scroll">
+        {openConns.map((c) => (
+          <div key={c.id} className={`conn-tab ${c.id === activeId ? "active" : ""}`} onClick={() => setActive(c.id)}>
+            <span className="conn-tab-dot" style={{ background: colorForConnection(c.id) }} />
+            <span className="truncate" style={{ maxWidth: 140 }}>
+              {c.name}
+            </span>
+            <EngineBadge engine={c.engine} />
+            <button
+              className="conn-tab-close"
+              title="Close connection"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeConnection(c.id);
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
 
-      <div style={{ position: "relative" }}>
+      <div style={{ position: "relative", flex: "none" }}>
         <button
           className="btn ghost sm"
           title="Open another connection"
