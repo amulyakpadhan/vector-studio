@@ -5,19 +5,21 @@ import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CollectionInfo, DbEngine } from "@vyn/core";
 import { useConnections } from "@/lib/store";
+import { useWorkbench } from "@/lib/workbenchStore";
 import { connectorFor } from "@/lib/connector";
 import { Brand } from "./Brand";
 import { EngineBadge } from "./EngineBadge";
 import { CollectionView } from "./CollectionView";
 import { CreateCollectionModal } from "./CreateCollectionModal";
+import { ConnectionTabs } from "./ConnectionTabs";
 
+/**
+ * `connectionId` is the connection this route wants open + active — the workbench itself may
+ * already have other connections open from earlier navigation, tracked in useWorkbench.
+ */
 export function Studio({ connectionId }: { connectionId: string }) {
-  const conn = useConnections((s) => s.get(connectionId));
   const qc = useQueryClient();
   const [hydrated, setHydrated] = useState(false);
-  // Open collections, tab-strip style — order is the tab order, last opened wins focus.
-  const [openTabs, setOpenTabs] = useState<string[]>([]);
-  const [active, setActive] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [collFilter, setCollFilter] = useState("");
   const [dragTab, setDragTab] = useState<string | null>(null);
@@ -25,17 +27,33 @@ export function Studio({ connectionId }: { connectionId: string }) {
 
   useEffect(() => setHydrated(true), []);
 
+  const openConnection = useWorkbench((s) => s.openConnection);
+  useEffect(() => {
+    openConnection(connectionId);
+  }, [connectionId, openConnection]);
+
+  const activeConnectionId = useWorkbench((s) => s.activeConnectionId);
+  const workspace = useWorkbench((s) => (activeConnectionId ? s.byConnection[activeConnectionId] : undefined));
+  const openCollectionAction = useWorkbench((s) => s.openCollection);
+  const closeCollectionAction = useWorkbench((s) => s.closeCollection);
+  const setActiveCollectionAction = useWorkbench((s) => s.setActiveCollection);
+  const renameCollectionAction = useWorkbench((s) => s.renameCollection);
+  const reorderCollectionsAction = useWorkbench((s) => s.reorderCollections);
+
+  const conn = useConnections((s) => (activeConnectionId ? s.get(activeConnectionId) : undefined));
   const connector = useMemo(() => (conn ? connectorFor(conn) : null), [conn]);
 
   const collections = useQuery({
-    queryKey: ["collections", connectionId],
-    enabled: !!connector,
+    queryKey: ["collections", activeConnectionId],
+    enabled: !!connector && !!activeConnectionId,
     queryFn: () => connector!.listCollections(),
   });
 
+  const openTabs = workspace?.openCollections ?? [];
+  const active = workspace?.activeCollection ?? null;
+
   function openCollection(name: string) {
-    setOpenTabs((tabs) => (tabs.includes(name) ? tabs : [...tabs, name]));
-    setActive(name);
+    if (activeConnectionId) openCollectionAction(activeConnectionId, name);
   }
 
   /**
@@ -47,55 +65,43 @@ export function Studio({ connectionId }: { connectionId: string }) {
    * showing the old list until the new one resolves).
    */
   function removeCollection(name: string) {
-    qc.setQueryData<CollectionInfo[]>(["collections", connectionId], (old) => old?.filter((c) => c.name !== name));
+    if (!activeConnectionId) return;
+    qc.setQueryData<CollectionInfo[]>(["collections", activeConnectionId], (old) => old?.filter((c) => c.name !== name));
     collections.refetch();
   }
 
   /** Same immediate-update reasoning as removeCollection — swap the name in place instead
    * of waiting on a full (potentially slow) refetch, and keep the tab open under its new name. */
   function renameCollectionTab(oldName: string, newName: string) {
-    qc.setQueryData<CollectionInfo[]>(["collections", connectionId], (old) =>
+    if (!activeConnectionId) return;
+    qc.setQueryData<CollectionInfo[]>(["collections", activeConnectionId], (old) =>
       old?.map((c) => (c.name === oldName ? { ...c, name: newName } : c)),
     );
-    setOpenTabs((tabs) => tabs.map((t) => (t === oldName ? newName : t)));
-    setActive((a) => (a === oldName ? newName : a));
+    renameCollectionAction(activeConnectionId, oldName, newName);
     collections.refetch();
   }
 
   function closeTab(name: string) {
-    setOpenTabs((tabs) => {
-      const idx = tabs.indexOf(name);
-      const next = tabs.filter((t) => t !== name);
-      if (active === name) {
-        // Focus the tab that was to its right, or its new left neighbor if it was last.
-        setActive(next[idx] ?? next[idx - 1] ?? null);
-      }
-      return next;
-    });
+    if (activeConnectionId) closeCollectionAction(activeConnectionId, name);
+  }
+
+  function setActive(name: string) {
+    if (activeConnectionId) setActiveCollectionAction(activeConnectionId, name);
   }
 
   function reorderTabs(dragged: string, target: string) {
-    if (dragged === target) return;
-    setOpenTabs((tabs) => {
-      const from = tabs.indexOf(dragged);
-      const to = tabs.indexOf(target);
-      if (from === -1 || to === -1) return tabs;
-      const next = [...tabs];
-      next.splice(from, 1);
-      next.splice(to, 0, dragged);
-      return next;
-    });
+    if (activeConnectionId) reorderCollectionsAction(activeConnectionId, dragged, target);
   }
 
-  // Auto-open the first collection once loaded.
+  // Auto-open the first collection the first time this connection's workbench is empty.
   useEffect(() => {
-    if (openTabs.length === 0 && collections.data && collections.data.length > 0) {
+    if (activeConnectionId && openTabs.length === 0 && collections.data && collections.data.length > 0) {
       openCollection(collections.data[0]!.name);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collections.data]);
+  }, [collections.data, activeConnectionId]);
 
-  if (hydrated && !conn) {
+  if (hydrated && activeConnectionId && !conn) {
     return (
       <div className="shell">
         <Topbar />
@@ -110,9 +116,26 @@ export function Studio({ connectionId }: { connectionId: string }) {
     );
   }
 
+  if (hydrated && !activeConnectionId) {
+    return (
+      <div className="shell">
+        <Topbar />
+        <ConnectionTabs />
+        <div className="empty">
+          <div className="big">◇</div>
+          <p>No connection open.</p>
+          <Link className="btn primary" href="/studio" style={{ marginTop: 16 }}>
+            ← All connections
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="shell">
       <Topbar connName={conn?.name} engine={conn?.engine} />
+      <ConnectionTabs />
       <div className="studio">
         <aside className="sidebar">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 6px" }}>
@@ -214,11 +237,11 @@ export function Studio({ connectionId }: { connectionId: string }) {
             </div>
           )}
 
-          {active && connector ? (
+          {active && connector && activeConnectionId ? (
             <CollectionView
-              key={active}
+              key={`${activeConnectionId}:${active}`}
               connector={connector}
-              connectionId={connectionId}
+              connectionId={activeConnectionId}
               collection={active}
               onDeleted={() => {
                 closeTab(active);
