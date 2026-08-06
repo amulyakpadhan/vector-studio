@@ -146,6 +146,7 @@ export class MilvusConnector implements VectorConnector {
       exportVectors: true,
       createCollection: true,
       updatePayload: true, // via upsert, which needs the full row
+      renameCollection: true, // POST /v2/vectordb/collections/rename
     };
   }
 
@@ -218,6 +219,14 @@ export class MilvusConnector implements VectorConnector {
 
   async deleteCollection(collection: string): Promise<void> {
     await this.call("/v2/vectordb/collections/drop", { collectionName: collection });
+    this.metaCache.delete(collection);
+  }
+
+  async renameCollection(collection: string, newName: string): Promise<void> {
+    await this.call("/v2/vectordb/collections/rename", {
+      collectionName: collection,
+      newCollectionName: newName,
+    });
     this.metaCache.delete(collection);
   }
 

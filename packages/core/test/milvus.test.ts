@@ -159,3 +159,10 @@ test("createCollection maps the metric to Milvus's name", async () => {
   assert.equal(create.body.metricType, "IP");
   assert.equal(create.body.dimension, 8);
 });
+
+test("renameCollection posts collectionName/newCollectionName to the rename endpoint", async () => {
+  const calls = stubFetch(() => ({ code: 0, data: {} }));
+  await conn().renameCollection("docs", "docs_v2");
+  const rename = calls.find((c) => c.path.endsWith("/collections/rename"))!;
+  assert.deepEqual(rename.body, { collectionName: "docs", newCollectionName: "docs_v2" });
+});

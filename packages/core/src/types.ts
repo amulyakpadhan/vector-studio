@@ -190,4 +190,7 @@ export interface ConnectorCapabilities {
   updatePayload: boolean;
   /** Supports sparse vectors (indices+values) alongside/instead of a dense one, for dense+sparse hybrid scoring. */
   sparseVectors?: boolean;
+  /** Can rename a collection in place. Only engines that key collections by an internal id
+   * rather than by name support this (Milvus, Chroma) — for the rest, the name IS the identifier. */
+  renameCollection?: boolean;
 }
