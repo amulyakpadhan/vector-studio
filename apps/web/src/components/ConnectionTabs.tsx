@@ -56,7 +56,7 @@ export function ConnectionTabs() {
           +
         </button>
         {showPicker && (
-          <div className="export-menu">
+          <div className="export-menu" style={{ left: "auto", right: 0 }}>
             {closedConns.length === 0 ? (
               <div style={{ padding: "8px 12px", color: "var(--text-faint)", fontSize: 12.5 }}>
                 All connections are open.
