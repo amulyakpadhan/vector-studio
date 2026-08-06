@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { VectorConnector, VectorRecord } from "@vyn/core";
 import { useEscape, copyToClipboard } from "@/lib/useEscape";
 import { toast } from "@/lib/toast";
+import { confirmDialog } from "@/lib/confirm";
 
 interface Props {
   record: VectorRecord;
@@ -46,7 +47,7 @@ export function RecordDrawer({ record, collection, connector, onClose, onChanged
   }
 
   async function remove() {
-    if (!confirm(`Delete record ${record.id}?`)) return;
+    if (!(await confirmDialog(`Delete record ${record.id}?`, { confirmLabel: "Delete", danger: true }))) return;
     setBusy(true);
     setError(null);
     try {
