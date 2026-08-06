@@ -19,13 +19,22 @@ interface Props {
 
 /** Records read from the source per page. Kept well under every engine's write-batch cap. */
 const READ_BATCH = 200;
+/** Retries for a single read/write step before giving up on the whole clone — a batch of 200
+ * records with large vectors can genuinely time out once on a slow/loaded self-hosted instance
+ * without the job actually being broken; retrying that one step is far cheaper than restarting. */
+const RETRY_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 1500;
 
 type Phase =
   | { kind: "form" }
   | { kind: "creating" }
-  | { kind: "copying"; copied: number; skipped: number }
+  | { kind: "copying"; copied: number; skipped: number; retrying?: number }
   | { kind: "done"; copied: number; skipped: number }
   | { kind: "error"; message: string };
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const CREATE_NEW = "__new__";
 const NEW_CONNECTION = "__new_connection__";
@@ -112,14 +121,32 @@ export function CloneModal({ sourceConn, sourceConnector, collection, onClose }:
     let cursor: string | undefined;
     setPhase({ kind: "copying", copied, skipped });
 
+    // One transient failure (a batch timing out on a slow/loaded self-hosted instance) shouldn't
+    // sink an otherwise-succeeding multi-batch clone — retry that single step before giving up.
+    async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+      for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+        try {
+          return await fn();
+        } catch (err) {
+          if (attempt === RETRY_ATTEMPTS || cancelRef.current) throw err;
+          setPhase({ kind: "copying", copied, skipped, retrying: attempt });
+          await sleep(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+          setPhase({ kind: "copying", copied, skipped });
+        }
+      }
+      throw new Error("unreachable");
+    }
+
     try {
       do {
         if (cancelRef.current) break;
-        const page = await sourceConnector.listRecords(collection, { limit: READ_BATCH, cursor, withVectors: true });
+        const page = await withRetry(() =>
+          sourceConnector.listRecords(collection, { limit: READ_BATCH, cursor, withVectors: true }),
+        );
         const withVec = page.items.filter((r) => r.vector && r.vector.length > 0);
         skipped += page.items.length - withVec.length;
         if (withVec.length > 0) {
-          await destConnector.upsertRecords(targetName, withVec as VectorRecord[]);
+          await withRetry(() => destConnector.upsertRecords(targetName, withVec as VectorRecord[]));
           copied += withVec.length;
         }
         setPhase({ kind: "copying", copied, skipped });
@@ -253,6 +280,11 @@ export function CloneModal({ sourceConn, sourceConnector, collection, onClose }:
                 {sourceStats.data?.count ? ` of ~${sourceStats.data.count.toLocaleString()}` : ""}…
               </span>
             </div>
+            {phase.retrying && (
+              <div style={{ color: "var(--amber)", fontSize: 12.5, marginBottom: 10 }}>
+                ⟳ That batch failed (attempt {phase.retrying}/{RETRY_ATTEMPTS}) — retrying…
+              </div>
+            )}
             {!!sourceStats.data?.count && (
               <div style={{ marginBottom: 14 }}>
                 {(() => {

@@ -14,6 +14,7 @@ import { ImportModal } from "./ImportModal";
 import { CloneModal } from "./CloneModal";
 import { StatsBar } from "./StatsBar";
 import { toast } from "@/lib/toast";
+import { confirmDialog } from "@/lib/confirm";
 
 interface Props {
   connector: VectorConnector;
@@ -93,7 +94,11 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
   }
 
   async function deleteCollection() {
-    if (!confirm(`Permanently delete collection "${collection}" and all its vectors?`)) return;
+    const ok = await confirmDialog(`Permanently delete collection "${collection}" and all its vectors?`, {
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     await connector.deleteCollection(collection);
     onDeleted();
   }
@@ -146,7 +151,11 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
     const items = records.data?.items ?? [];
     const ids = items.filter((r) => selected.has(String(r.id))).map((r) => r.id);
     if (ids.length === 0) return;
-    if (!confirm(`Delete ${ids.length} selected record${ids.length === 1 ? "" : "s"}? This can't be undone.`)) return;
+    const ok = await confirmDialog(`Delete ${ids.length} selected record${ids.length === 1 ? "" : "s"}? This can't be undone.`, {
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     setBulkBusy(true);
     try {
       await connector.deleteRecords(collection, ids);

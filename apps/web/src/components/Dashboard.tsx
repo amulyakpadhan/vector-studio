@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useConnections, type SavedConnection } from "@/lib/store";
+import { confirmDialog } from "@/lib/confirm";
 import { ConnectionForm } from "./ConnectionForm";
 import { EngineBadge } from "./EngineBadge";
 import { ConnectionHealth } from "./ConnectionHealth";
@@ -84,8 +85,10 @@ export function Dashboard() {
                   </button>
                   <button
                     className="btn ghost sm danger"
-                    onClick={() => {
-                      if (confirm(`Delete connection "${c.name}"?`)) remove(c.id);
+                    onClick={async () => {
+                      if (await confirmDialog(`Delete connection "${c.name}"?`, { confirmLabel: "Delete", danger: true })) {
+                        remove(c.id);
+                      }
                     }}
                   >
                     Delete

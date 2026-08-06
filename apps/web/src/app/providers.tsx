@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Toaster } from "@/components/Toaster";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -21,6 +22,7 @@ export function Providers({ children }: { children: ReactNode }) {
     <QueryClientProvider client={client}>
       {children}
       <Toaster />
+      <ConfirmDialog />
     </QueryClientProvider>
   );
 }
