@@ -188,6 +188,7 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
         dimension={dim}
         metric={metric}
         indexedFields={schema.data?.fields.length}
+        serverVectorizer={schema.data?.serverVectorizer}
         loading={schema.isLoading && stats.isLoading}
       />
 
