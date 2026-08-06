@@ -139,3 +139,27 @@ test("record endpoints use the collection uuid, not its name", async () => {
   await conn().deleteRecords("docs", ["a"]);
   assert.ok(calls.some((c) => c.path === `${V2}/uuid-1/delete`));
 });
+
+test("renameCollection PUTs new_name to the collection's uuid endpoint", async () => {
+  const calls = stubFetch((_m, path) => {
+    if (path === V2) return [];
+    if (path === `${V2}/docs`) return DOCS;
+    if (path === `${V2}/uuid-1`) return {};
+    return undefined;
+  });
+  await conn().renameCollection("docs", "docs_v2");
+  const put = calls.find((c) => c.method === "PUT" && c.path === `${V2}/uuid-1`)!;
+  assert.deepEqual(put.body, { new_name: "docs_v2" });
+});
+
+test("renameCollection refuses on the legacy v1 API instead of 404ing", async () => {
+  stubFetch((_m, path) => {
+    if (path === V2) return undefined;
+    if (path === "/api/v1/collections") return [];
+    return undefined;
+  });
+  await assert.rejects(
+    () => conn().renameCollection("docs", "docs_v2"),
+    (e: Error) => e.name === "ConnectorError" && /v2 API/.test(e.message),
+  );
+});

@@ -51,6 +51,17 @@ export function Studio({ connectionId }: { connectionId: string }) {
     collections.refetch();
   }
 
+  /** Same immediate-update reasoning as removeCollection — swap the name in place instead
+   * of waiting on a full (potentially slow) refetch, and keep the tab open under its new name. */
+  function renameCollectionTab(oldName: string, newName: string) {
+    qc.setQueryData<CollectionInfo[]>(["collections", connectionId], (old) =>
+      old?.map((c) => (c.name === oldName ? { ...c, name: newName } : c)),
+    );
+    setOpenTabs((tabs) => tabs.map((t) => (t === oldName ? newName : t)));
+    setActive((a) => (a === oldName ? newName : a));
+    collections.refetch();
+  }
+
   function closeTab(name: string) {
     setOpenTabs((tabs) => {
       const idx = tabs.indexOf(name);
@@ -213,6 +224,7 @@ export function Studio({ connectionId }: { connectionId: string }) {
                 closeTab(active);
                 removeCollection(active);
               }}
+              onRenamed={renameCollectionTab}
             />
           ) : (
             <div className="empty">

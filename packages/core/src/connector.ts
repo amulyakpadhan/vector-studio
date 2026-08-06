@@ -35,6 +35,9 @@ export interface VectorConnector {
   getStats(collection: string): Promise<CollectionStats>;
   createCollection(spec: CreateCollectionSpec): Promise<void>;
   deleteCollection(collection: string): Promise<void>;
+  /** Only when capabilities().renameCollection is true — most engines key collections by
+   * name (it IS the identifier) and have no rename operation at all. */
+  renameCollection?(collection: string, newName: string): Promise<void>;
 
   // ─── records ──────────────────────────────────────────────────
   listRecords(collection: string, opts: PageOpts): Promise<Page<VectorRecord>>;

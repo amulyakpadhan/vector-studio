@@ -116,6 +116,7 @@ export class ChromaConnector implements VectorConnector {
       exportVectors: true,
       createCollection: true,
       updatePayload: true,
+      renameCollection: true, // PUT .../collections/{id} with new_name — v2 API only
     };
   }
 
@@ -210,6 +211,20 @@ export class ChromaConnector implements VectorConnector {
     // v2 deletes by name; v1 accepts the name too.
     await this.http.delete(`${base}/${encodeURIComponent(collection)}`);
     this.idCache.delete(collection);
+  }
+
+  async renameCollection(collection: string, newName: string): Promise<void> {
+    const base = await this.resolveBasePath();
+    if (!base.startsWith("/api/v2")) {
+      throw new ConnectorError(
+        "Renaming a collection needs Chroma's v2 API — this server only speaks the legacy v1 API.",
+        "chroma",
+      );
+    }
+    const id = await this.collectionId(collection);
+    await this.http.put(`${base}/${id}`, { new_name: newName });
+    this.idCache.delete(collection);
+    this.idCache.set(newName, id);
   }
 
   async listRecords(collection: string, opts: PageOpts): Promise<Page<VectorRecord>> {

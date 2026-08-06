@@ -12,6 +12,7 @@ import { FilterBar } from "./FilterBar";
 import { AddRecordModal } from "./AddRecordModal";
 import { ImportModal } from "./ImportModal";
 import { CloneModal } from "./CloneModal";
+import { RenameCollectionModal } from "./RenameCollectionModal";
 import { StatsBar } from "./StatsBar";
 import { toast } from "@/lib/toast";
 import { confirmDialog } from "@/lib/confirm";
@@ -21,11 +22,12 @@ interface Props {
   connectionId: string;
   collection: string;
   onDeleted: () => void;
+  onRenamed: (oldName: string, newName: string) => void;
 }
 
 const PAGE_SIZE = 25;
 
-export function CollectionView({ connector, connectionId, collection, onDeleted }: Props) {
+export function CollectionView({ connector, connectionId, collection, onDeleted, onRenamed }: Props) {
   const qc = useQueryClient();
   const [tab, setTab] = useState<"data" | "search" | "viz">("data");
   // Cursor stack: cursorStack[i] is the cursor that produced page i. First page = undefined.
@@ -38,6 +40,7 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showClone, setShowClone] = useState(false);
+  const [showRename, setShowRename] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -202,6 +205,11 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
           <button className="btn sm" onClick={() => setShowClone(true)} disabled={!conn}>
             ⇄ Clone
           </button>
+          {caps.renameCollection && (
+            <button className="btn sm" onClick={() => setShowRename(true)}>
+              ✎ Rename
+            </button>
+          )}
           <button className="btn sm danger" onClick={deleteCollection}>
             Delete collection
           </button>
@@ -420,6 +428,15 @@ export function CollectionView({ connector, connectionId, collection, onDeleted 
           sourceConnector={connector}
           collection={collection}
           onClose={() => setShowClone(false)}
+        />
+      )}
+
+      {showRename && (
+        <RenameCollectionModal
+          connector={connector}
+          collection={collection}
+          onClose={() => setShowRename(false)}
+          onRenamed={onRenamed}
         />
       )}
     </div>
