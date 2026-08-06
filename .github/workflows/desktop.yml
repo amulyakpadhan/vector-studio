@@ -1,0 +1,53 @@
+name: Desktop (Tauri)
+
+# Windows-only for now: macOS runners bill at 10x the Linux/Windows minute
+# rate, and there's no code to validate on Linux beyond what the web-app CI
+# already covers. Add macos-latest / ubuntu-latest to the matrix once the
+# desktop build is far enough along to be worth the extra minutes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/desktop/**"
+      - "apps/web/**"
+      - "packages/core/**"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "apps/web/**"
+      - "packages/core/**"
+      - ".github/workflows/desktop.yml"
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck + build the web app (frontend that Tauri will wrap)
+        run: pnpm --filter @vyn/web build
+
+      # Full `tauri build` (installer bundling) isn't wired up yet — it needs
+      # apps/web exported as static files, which the /studio/[id] dynamic
+      # route doesn't currently support. This step only proves the Rust side
+      # itself compiles; extend it to `pnpm --filter @vyn/desktop build` once
+      # that's resolved.
+      - name: Check the Tauri (Rust) side compiles
+        working-directory: apps/desktop/src-tauri
+        run: cargo check --locked
