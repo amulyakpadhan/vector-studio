@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Json, VectorConnector, VectorSample } from "@vyn/core";
+import type { Json, VectorConnector, VectorRecord, VectorSample } from "@vyn/core";
 import { colorByField, type ColorResult, type FieldValue } from "@vyn/viz";
 import type { ProjectionScene } from "@vyn/viz/render";
 
 interface Props {
   connector: VectorConnector;
   collection: string;
+  onInspect?: (record: VectorRecord) => void;
 }
 
 const SAMPLE_LIMIT = 1500;
@@ -26,11 +27,15 @@ interface HoverInfo {
   payload: Record<string, Json>;
 }
 
-export function ProjectionView({ connector, collection }: Props) {
+export function ProjectionView({ connector, collection, onInspect }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<ProjectionScene | null>(null);
   const sampleRef = useRef<VectorSample | null>(null);
   const positionsRef = useRef<number[][]>([]);
+  // Ref so the click handler (bound once, inside the load effect below) always
+  // sees the latest callback without needing to recreate the WebGL scene.
+  const onInspectRef = useRef(onInspect);
+  onInspectRef.current = onInspect;
 
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [colorField, setColorField] = useState<string>("");
@@ -131,6 +136,11 @@ export function ProjectionView({ connector, collection }: Props) {
         },
         onClick: (idx) => {
           void runQuery(idx);
+          if (idx !== null && onInspectRef.current) {
+            const id = sample.ids[idx];
+            const vector = sample.vectors[idx];
+            if (id !== undefined) onInspectRef.current({ id, vector, payload: sample.payloads[idx] ?? {} });
+          }
         },
       });
       scene.setData({ positions: result.positions, colors: initial.colors, ids: sample.ids });
@@ -190,9 +200,9 @@ export function ProjectionView({ connector, collection }: Props) {
         )}
       </div>
 
-      {caps.textSearch === false && caps.exportVectors && phase.kind === "ready" && (
+      {caps.exportVectors && phase.kind === "ready" && (
         <div style={{ color: "var(--text-faint)", fontSize: 12.5 }}>
-          Tip: click any point to light up its {NEIGHBORS} nearest neighbors (coral).
+          Tip: click any point to open its full record{caps.textSearch === false ? ` and light up its ${NEIGHBORS} nearest neighbors (coral)` : ""}.
         </div>
       )}
 
