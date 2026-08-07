@@ -20,7 +20,7 @@ on:
       - ".github/workflows/desktop.yml"
 
 jobs:
-  check:
+  build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,14 +40,24 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Typecheck + build the web app (frontend that Tauri will wrap)
-        run: pnpm --filter @vyn/web build
+      # Fast feedback before spending runner minutes on the much slower Rust
+      # build below — apps/web is statically exported (next.config.mjs's
+      # output: "export"), which is what lets Tauri package it as local files.
+      - name: Typecheck the web app
+        run: pnpm --filter @vyn/web typecheck
 
-      # Full `tauri build` (installer bundling) isn't wired up yet — it needs
-      # apps/web exported as static files, which the /studio/[id] dynamic
-      # route doesn't currently support. This step only proves the Rust side
-      # itself compiles; extend it to `pnpm --filter @vyn/desktop build` once
-      # that's resolved.
-      - name: Check the Tauri (Rust) side compiles
-        working-directory: apps/desktop/src-tauri
-        run: cargo check --locked
+      # tauri build runs beforeBuildCommand (web:build, i.e. `next build`,
+      # producing apps/web/out) itself, then bundles it with the Rust binary
+      # into a real Windows installer (NSIS .exe + MSI) under
+      # src-tauri/target/release/bundle/.
+      - name: Build the desktop installer
+        run: pnpm --filter @vyn/desktop build
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: vyn-studio-windows-installer
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
