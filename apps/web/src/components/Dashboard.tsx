@@ -46,7 +46,7 @@ export function Dashboard() {
             <div key={c.id} className="card link card-in" style={{ "--i": i } as React.CSSProperties}>
               <div className="card-top">
                 <div className={`avatar avatar-${c.engine}`}>{c.name.trim().charAt(0).toUpperCase() || "?"}</div>
-                <Link href={`/studio/${c.id}`} style={{ minWidth: 0, flex: 1 }}>
+                <Link href={`/studio?id=${c.id}`} style={{ minWidth: 0, flex: 1 }}>
                   <div className="card-name">{c.name}</div>
                   <div className="card-meta">
                     {c.url}
@@ -63,7 +63,7 @@ export function Dashboard() {
                 <EngineBadge engine={c.engine} />
               </div>
               <div className="card-foot">
-                <Link href={`/studio/${c.id}`} className="btn sm">
+                <Link href={`/studio?id=${c.id}`} className="btn sm">
                   Open →
                 </Link>
                 <div style={{ display: "flex", gap: 4 }}>
