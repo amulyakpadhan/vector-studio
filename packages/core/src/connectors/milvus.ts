@@ -210,10 +210,20 @@ export class MilvusConnector implements VectorConnector {
   async createCollection(spec: CreateCollectionSpec): Promise<void> {
     // The quick-setup form of the create API: Milvus generates an "id" primary
     // key and a "vector" field, and indexes the vector with this metric.
+    //
+    // idType defaults to VarChar rather than Milvus's own Int64 default:
+    // every other engine here treats record ids as opaque strings (UUIDs,
+    // slugs, etc.), and cloning/importing into a fresh Int64-keyed collection
+    // fails outright the moment a non-numeric source id shows up (Number(uuid)
+    // is NaN, which Milvus's REST gateway rejects trying to parse as Int64).
+    // VarChar accepts numeric-looking ids just as well, so this is a strict
+    // widening with no downside for ids that happen to be numbers already.
     await this.call("/v2/vectordb/collections/create", {
       collectionName: spec.name,
       dimension: spec.dimension,
       metricType: METRIC_TO_MILVUS[spec.metric],
+      idType: "VarChar",
+      params: { max_length: "512" },
     });
   }
 
@@ -343,7 +353,7 @@ export class MilvusConnector implements VectorConnector {
   private async call<T>(path: string, body: unknown): Promise<T> {
     const res = await this.http.post<MilvusEnvelope<T>>(path, body);
     if (res.code !== 0 && res.code !== 200) {
-      throw new ConnectorError(res.message ?? `Milvus error ${res.code}`, "milvus", res.code);
+      throw new ConnectorError(explainMilvusError(res.message) ?? `Milvus error ${res.code}`, "milvus", res.code);
     }
     return res.data;
   }
@@ -416,4 +426,21 @@ export class MilvusConnector implements VectorConnector {
       vector: Array.isArray(rawVector) ? (rawVector as number[]) : undefined,
     };
   }
+}
+
+/**
+ * Writing into a collection whose primary key is Int64 fails with this exact
+ * Go strconv error the moment a non-numeric id (a UUID from Weaviate/Qdrant,
+ * a slug, etc.) shows up — collections created by this app default to a
+ * VarChar primary key precisely to avoid it, but an existing Int64-keyed
+ * collection (created elsewhere, or before that default changed) still hits
+ * this. Not a Vyn bug, so point at the actual fix instead of the raw Go error.
+ */
+function explainMilvusError(message: string | undefined): string | undefined {
+  if (!message || !/strconv\.ParseInt.*Int64/is.test(message)) return message;
+  return (
+    `${message} — this collection's primary key is Int64-typed, which can only hold numeric ids. ` +
+    `The source record(s) have non-numeric ids (e.g. UUIDs), which can't be written here. Clone into a ` +
+    `newly-created collection instead (its primary key defaults to VarChar), or recreate this one with a VarChar id.`
+  );
 }

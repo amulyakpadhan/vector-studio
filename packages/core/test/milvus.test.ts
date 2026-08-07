@@ -152,12 +152,29 @@ test("updatePayload merges into the existing row instead of replacing it", async
   });
 });
 
-test("createCollection maps the metric to Milvus's name", async () => {
+test("createCollection maps the metric to Milvus's name and defaults to a VarChar id", async () => {
   const calls = stubFetch(() => ({ code: 0, data: {} }));
   await conn().createCollection({ name: "new", dimension: 8, metric: "dot" });
   const create = calls.find((c) => c.path.endsWith("/collections/create"))!;
   assert.equal(create.body.metricType, "IP");
   assert.equal(create.body.dimension, 8);
+  // VarChar, not Milvus's own Int64 default — Int64 primary keys reject any
+  // non-numeric source id (e.g. a UUID cloned in from Weaviate) outright.
+  assert.equal(create.body.idType, "VarChar");
+});
+
+test("an Int64-primary-key parse failure gets an explanatory hint appended", async () => {
+  stubFetch((path) => {
+    if (path.endsWith("/collections/describe")) return DESCRIBE;
+    return {
+      code: 65535,
+      message: 'fail to deal the insert data, error: strconv.ParseInt: parsing "": invalid syntax: invalid parameter[expected=Int64][actual=]',
+    };
+  });
+  await assert.rejects(
+    conn().upsertRecords("docs", [{ id: "not-a-number", payload: {}, vector: [0.1, 0.2, 0.3, 0.4] }]),
+    /primary key is Int64-typed.*VarChar/s,
+  );
 });
 
 test("renameCollection posts collectionName/newCollectionName to the rename endpoint", async () => {
