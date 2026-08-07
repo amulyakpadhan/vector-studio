@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Toaster } from "@/components/Toaster";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { TauriTitleBar } from "@/components/TauriTitleBar";
 import { installTauriFetch } from "@/lib/tauriFetch";
 
 // Module scope, not inside the component: must run once before any connector
@@ -25,6 +26,7 @@ export function Providers({ children }: { children: ReactNode }) {
   );
   return (
     <QueryClientProvider client={client}>
+      <TauriTitleBar />
       {children}
       <Toaster />
       <ConfirmDialog />
