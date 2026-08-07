@@ -239,7 +239,7 @@ export function CollectionView({ connector, connectionId, collection, onDeleted,
       </div>
 
       {tab === "viz" ? (
-        <ProjectionView connector={connector} collection={collection} />
+        <ProjectionView connector={connector} collection={collection} onInspect={inspectRecord} />
       ) : tab === "search" ? (
         <SearchView
           connector={connector}
