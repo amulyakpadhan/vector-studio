@@ -101,6 +101,83 @@ textarea {
   }
 }
 
+/* ─── desktop (Tauri) custom title bar ──────────────────────
+   Replaces the native OS chrome (decorations: false) with our own — a
+   web page has no OS window to draw a title bar for otherwise, so this
+   only ever renders inside the desktop build. Fixed + body padding
+   rather than relying on stacked sticky elements, so it never depends
+   on knowing about .topbar's own sticky offset or vice versa. */
+
+body.tauri-titlebar-active {
+  padding-top: 32px;
+}
+
+.tauri-titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  z-index: 100;
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.tauri-titlebar-drag {
+  /* Dragging itself comes from the data-tauri-drag-region attribute in
+     TauriTitleBar.tsx, not CSS — Tauri doesn't use Electron's
+     -webkit-app-region extension. */
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+.tauri-titlebar-mark {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  background: var(--grad);
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #04140f;
+  flex: none;
+}
+.tauri-titlebar-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: -0.01em;
+}
+.tauri-titlebar-controls {
+  display: flex;
+  flex: none;
+}
+.tauri-titlebar-btn {
+  width: 44px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1;
+  transition: background 0.1s, color 0.1s;
+}
+.tauri-titlebar-btn:hover {
+  background: var(--bg-elev-2);
+  color: var(--text);
+}
+.tauri-titlebar-btn.close:hover {
+  background: var(--red);
+  color: #1a0405;
+}
+
 .topbar {
   display: flex;
   align-items: center;

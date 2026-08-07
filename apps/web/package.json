@@ -13,6 +13,7 @@
     "@vyn/core": "workspace:*",
     "@vyn/viz": "workspace:*",
     "@tanstack/react-query": "^5.62.0",
+    "@tauri-apps/api": "^2",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
