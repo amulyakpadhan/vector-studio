@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { AppLink as Link } from "@/components/AppLink";
 import { useConnections, type SavedConnection } from "@/lib/store";
 import { confirmDialog } from "@/lib/confirm";
 import { ConnectionForm } from "./ConnectionForm";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import Link from "next/link";
+import { AppLink as Link } from "@/components/AppLink";
 import { GITHUB_URL } from "@/lib/links";
 
 /** Deterministic pseudo-random in [0,1) from a string seed. Using Math.random
