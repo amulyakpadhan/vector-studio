@@ -98,6 +98,47 @@ test("createCollection honors an explicit vectorizer option — Clone passes the
   assert.equal((calls[0]!.body as any).vectorizer, "text2vec-openai");
 });
 
+test("createCollection declares per-property skip flags when properties are given", async () => {
+  const calls = stubFetch(() => ({}));
+  await conn().createCollection({
+    name: "New",
+    dimension: 8,
+    metric: "cosine",
+    options: {
+      vectorizer: "text2vec-openai",
+      properties: [
+        { name: "text", dataType: "text", vectorize: true },
+        { name: "sku", dataType: "text", vectorize: false },
+        { name: "price", dataType: "number", vectorize: false },
+      ],
+    },
+  });
+  const body = calls[0]!.body as any;
+  assert.deepEqual(body.properties, [
+    { name: "text", dataType: ["text"], moduleConfig: { "text2vec-openai": { skip: false } } },
+    { name: "sku", dataType: ["text"], moduleConfig: { "text2vec-openai": { skip: true } } },
+    { name: "price", dataType: ["number"], moduleConfig: { "text2vec-openai": { skip: true } } },
+  ]);
+});
+
+test("createCollection omits moduleConfig on properties when vectorizer is none", async () => {
+  const calls = stubFetch(() => ({}));
+  await conn().createCollection({
+    name: "New",
+    dimension: 8,
+    metric: "cosine",
+    options: { properties: [{ name: "text", dataType: "text", vectorize: true }] },
+  });
+  const body = calls[0]!.body as any;
+  assert.deepEqual(body.properties, [{ name: "text", dataType: ["text"] }]);
+});
+
+test("createCollection without any properties omits the properties field entirely", async () => {
+  const calls = stubFetch(() => ({}));
+  await conn().createCollection({ name: "New", dimension: 8, metric: "cosine" });
+  assert.equal("properties" in (calls[0]!.body as any), false);
+});
+
 test("vectorSearch builds a GraphQL nearVector query and normalizes distance→similarity", async () => {
   const calls = stubFetch((method, path) => {
     if (path === "/v1/schema/Docs") return DOCS_CLASS;

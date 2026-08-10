@@ -257,11 +257,27 @@ export class WeaviateConnector implements VectorConnector {
     // requested — e.g. Clone passes the source collection's serverVectorizer through
     // so the copy can keep auto-embedding, instead of silently losing it.
     const vectorizer = typeof spec.options?.["vectorizer"] === "string" ? spec.options["vectorizer"] : "none";
+    // Declaring properties up front (rather than relying on Weaviate's auto-schema
+    // inference from the first insert) is what makes per-property vectorize control
+    // possible at all — the Python client's Property(skip_vectorization=...) only
+    // does anything because it's declaring the property itself; a property Weaviate
+    // infers later has no chance to carry that flag.
+    const declaredProps = Array.isArray(spec.options?.["properties"]) ? spec.options["properties"] : [];
+    const properties = declaredProps
+      .filter((p): p is { name: string; dataType: string; vectorize?: boolean } =>
+        typeof p === "object" && p !== null && !Array.isArray(p) && typeof p["name"] === "string" && typeof p["dataType"] === "string",
+      )
+      .map((p) => ({
+        name: p.name,
+        dataType: [p.dataType],
+        ...(vectorizer !== "none" ? { moduleConfig: { [vectorizer]: { skip: p.vectorize === false } } } : {}),
+      }));
     try {
       await this.http.post("/v1/schema", {
         class: spec.name,
         vectorizer,
         vectorIndexConfig: { distance: METRIC_TO_WEAVIATE[spec.metric] },
+        ...(properties.length > 0 ? { properties } : {}),
       });
     } catch (err) {
       throw explainUsageLimit(err);
