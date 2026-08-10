@@ -10,6 +10,15 @@ const nextConfig = {
   // needing a Node server bundled into the app. Vercel serves a static
   // export just fine, so the deployed site behaves identically.
   output: "export",
+  // Without this, /studio exports as studio.html sitting next to studio.txt
+  // (the route's RSC flight-data payload) — same basename, different
+  // extension. Tauri's static asset resolver, given the bare path /studio
+  // with no extension, was resolving that ambiguity to the .txt file instead
+  // of the .html one, rendering the raw flight data as plain text instead of
+  // the page. trailingSlash exports studio/index.html + studio/index.txt in
+  // their own folder instead, so there's no same-basename pair to resolve
+  // ambiguously — a bare directory path unambiguously means its index.html.
+  trailingSlash: true,
 };
 
 export default nextConfig;
