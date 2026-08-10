@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { AppLink as Link } from "@/components/AppLink";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CollectionInfo, DbEngine } from "@vyn/core";
 import { useConnections } from "@/lib/store";
