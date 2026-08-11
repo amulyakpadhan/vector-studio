@@ -269,6 +269,12 @@ export class ProjectionScene {
     this.controls.dispose();
     this.disposeGeometry();
     this.renderer.dispose();
+    // dispose() frees GL resources but NOT the WebGL context itself, which
+    // lingers until GC. Browsers reclaim it eventually, but each open of the
+    // Visualize tab (or switch of collection) creates a fresh context, and
+    // WebView2's software-GL fallback can exhaust them and OOM the window
+    // before GC catches up — forceContextLoss releases it immediately.
+    this.renderer.forceContextLoss();
   }
 }
 
