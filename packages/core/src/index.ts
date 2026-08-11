@@ -1,6 +1,7 @@
 export * from "./types.ts";
 export * from "./connector.ts";
 export { HttpClient, type HttpOptions } from "./http.ts";
+export { mapPool } from "./concurrency.ts";
 export { QdrantConnector } from "./connectors/qdrant.ts";
 export { PineconeConnector } from "./connectors/pinecone.ts";
 export { WeaviateConnector } from "./connectors/weaviate.ts";

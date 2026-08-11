@@ -1,5 +1,6 @@
 import { ConnectorError, type VectorConnector } from "../connector.ts";
 import { HttpClient } from "../http.ts";
+import { mapPool } from "../concurrency.ts";
 import type {
   CollectionInfo,
   CollectionSchema,
@@ -40,6 +41,9 @@ import type {
  *    metric decides whether the value is inverted to keep every engine in this
  *    codebase reporting higher-is-more-similar.
  */
+
+/** Max simultaneous per-collection stat requests when building the list. */
+const COLLECTION_STATS_CONCURRENCY = 6;
 
 const METRIC_TO_MILVUS: Record<DistanceMetric, string> = {
   cosine: "COSINE",
@@ -167,29 +171,29 @@ export class MilvusConnector implements VectorConnector {
 
   async listCollections(): Promise<CollectionInfo[]> {
     const names = await this.call<string[]>("/v2/vectordb/collections/list", {});
-    return Promise.all(
-      names.map(async (name): Promise<CollectionInfo> => {
+    // Two requests per collection (describe + row count) — bounded so a
+    // many-collection instance doesn't fire the whole burst at once.
+    return mapPool(names, COLLECTION_STATS_CONCURRENCY, async (name): Promise<CollectionInfo> => {
+      try {
+        const meta = await this.collectionMeta(name);
+        let count: number | undefined;
         try {
-          const meta = await this.collectionMeta(name);
-          let count: number | undefined;
-          try {
-            count = await this.rowCount(name);
-          } catch {
-            count = undefined;
-          }
-          return {
-            name,
-            count,
-            dimension: meta.dimension,
-            metric: meta.metric,
-            status: meta.raw.load,
-          };
+          count = await this.rowCount(name);
         } catch {
-          // A collection we can't describe still belongs in the list.
-          return { name };
+          count = undefined;
         }
-      }),
-    );
+        return {
+          name,
+          count,
+          dimension: meta.dimension,
+          metric: meta.metric,
+          status: meta.raw.load,
+        };
+      } catch {
+        // A collection we can't describe still belongs in the list.
+        return { name };
+      }
+    });
   }
 
   async getSchema(collection: string): Promise<CollectionSchema> {
