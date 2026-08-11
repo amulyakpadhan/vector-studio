@@ -1,0 +1,13 @@
+.vscode/**
+src/**
+webview-ui/src/**
+webview-ui/vite.config.ts
+webview-ui/tsconfig.json
+webview-ui/index.html
+node_modules/**
+esbuild.js
+tsconfig.json
+**/*.map
+# Ship the built extension host and the built webview UI:
+!dist/extension.js
+!webview-ui/dist/**
