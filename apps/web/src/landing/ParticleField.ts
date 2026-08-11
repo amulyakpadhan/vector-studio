@@ -378,6 +378,9 @@ export class ParticleField {
     this.geometry.dispose();
     this.material.dispose();
     this.renderer.dispose();
+    // Free the WebGL context immediately rather than waiting on GC — dispose()
+    // alone leaves it live, and repeated landing mounts would accumulate them.
+    this.renderer.forceContextLoss();
   }
 }
 
