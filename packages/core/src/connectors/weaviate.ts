@@ -1,5 +1,6 @@
 import { ConnectorError, type VectorConnector } from "../connector.ts";
 import { HttpClient } from "../http.ts";
+import { mapPool } from "../concurrency.ts";
 import type {
   CollectionInfo,
   CollectionSchema,
@@ -36,6 +37,9 @@ import type {
  * vector per class (the first one declared) — multi-named-vector classes are
  * out of scope for now.
  */
+
+/** Max simultaneous per-collection stat requests when building the list. */
+const COLLECTION_STATS_CONCURRENCY = 6;
 
 const METRIC_TO_WEAVIATE: Record<DistanceMetric, string> = {
   cosine: "cosine",
@@ -203,23 +207,23 @@ export class WeaviateConnector implements VectorConnector {
   async listCollections(): Promise<CollectionInfo[]> {
     const schema = await this.http.get<{ classes?: WeaviateClass[] }>("/v1/schema");
     const classes = schema.classes ?? [];
-    return Promise.all(
-      classes.map(async (c): Promise<CollectionInfo> => {
-        this.cacheMeta(c);
-        let count: number | undefined;
-        try {
-          count = await this.aggregateCount(c.class);
-        } catch {
-          count = undefined;
-        }
-        const distance = classDistance(c);
-        return {
-          name: c.class,
-          count,
-          metric: distance ? WEAVIATE_TO_METRIC[distance] : undefined,
-        };
-      }),
-    );
+    // One aggregate-count request per class — bounded so a many-class instance
+    // doesn't fire the whole burst at once (see mapPool).
+    return mapPool(classes, COLLECTION_STATS_CONCURRENCY, async (c): Promise<CollectionInfo> => {
+      this.cacheMeta(c);
+      let count: number | undefined;
+      try {
+        count = await this.aggregateCount(c.class);
+      } catch {
+        count = undefined;
+      }
+      const distance = classDistance(c);
+      return {
+        name: c.class,
+        count,
+        metric: distance ? WEAVIATE_TO_METRIC[distance] : undefined,
+      };
+    });
   }
 
   async getSchema(collection: string): Promise<CollectionSchema> {
