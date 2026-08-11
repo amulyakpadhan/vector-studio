@@ -8,13 +8,38 @@ interface NativeFetchResponse {
 }
 
 /**
+ * Hosts we must NEVER route through native http_fetch, even though they're
+ * http(s): Tauri's own internal origins. In Tauri v2 the app is served from
+ * tauri.localhost and — critically — `invoke` itself rides over an IPC fetch
+ * to ipc.localhost. Routing those through http_fetch would send Tauri's own
+ * IPC (and every window control, and http_fetch itself) back through invoke →
+ * a deadlock that freezes the entire window, OS buttons included. asset.
+ * localhost is the asset protocol. Same-origin requests are excluded too.
+ */
+const TAURI_INTERNAL_HOSTS = new Set(["tauri.localhost", "ipc.localhost", "asset.localhost"]);
+
+function shouldRouteNative(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false; // relative/blob/data URLs — leave them to the real fetch
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  if (typeof window !== "undefined" && parsed.origin === window.location.origin) return false;
+  if (TAURI_INTERNAL_HOSTS.has(parsed.hostname.toLowerCase())) return false;
+  return true;
+}
+
+/**
  * Inside the Tauri desktop shell, replaces the global fetch with one that
- * routes absolute http(s) requests through the native http_fetch command
- * instead of the webview's own fetch — Rust has no concept of browser CORS,
- * so self-hosted/CORS-restricted vector DBs are reachable directly, with no
- * local bridge process needed. A no-op outside Tauri (plain browser/Vercel):
- * bails out immediately if the Tauri runtime isn't present, leaving the
- * normal fetch completely untouched.
+ * routes external http(s) requests (the vector DBs) through the native
+ * http_fetch command instead of the webview's own fetch — Rust has no concept
+ * of browser CORS, so self-hosted/CORS-restricted DBs are reachable directly,
+ * with no local bridge process needed. The app's own origin and Tauri's
+ * internal IPC/asset hosts are left on the real fetch (see shouldRouteNative).
+ * A no-op outside Tauri (plain browser/Vercel): bails out immediately if the
+ * Tauri runtime isn't present, leaving the normal fetch completely untouched.
  */
 export function installTauriFetch(): void {
   if (typeof window === "undefined") return;
@@ -25,9 +50,9 @@ export function installTauriFetch(): void {
   window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
 
-    // Only absolute http(s) URLs need the native path — relative asset
-    // requests, blob:/data: URLs, etc. behave exactly as they already do.
-    if (!/^https?:\/\//i.test(url)) return originalFetch(input, init);
+    // Only genuinely external DB requests take the native path — same-origin,
+    // Tauri-internal, and non-http URLs must use the real webview fetch.
+    if (!shouldRouteNative(url)) return originalFetch(input, init);
 
     const headers: Record<string, string> = {};
     if (init?.headers) new Headers(init.headers).forEach((value, key) => (headers[key] = value));
