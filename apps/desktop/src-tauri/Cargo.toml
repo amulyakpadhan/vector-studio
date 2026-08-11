@@ -26,4 +26,6 @@ serde_json = "1"
 # browser CORS, so it reaches self-hosted/CORS-restricted vector DBs
 # directly — no local bridge process needed in the desktop build. Runs on
 # Tauri's own existing async runtime, so no separate tokio dependency needed.
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+# gzip/brotli/deflate so compressed responses are decoded (a browser does this
+# transparently); the shared Client below reuses the connection pool.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "deflate"] }
