@@ -154,6 +154,11 @@ export function Landing() {
   useEffect(() => {
     let disposed = false;
     async function boot() {
+      // Never run the WebGL field inside the desktop shell — WebView2's
+      // software-GL fallback makes it slow and memory-hungry enough to crash
+      // the window (HomeGate redirects away from here in Tauri anyway, but a
+      // direct hit on "/" could still mount this for a tick before that fires).
+      if ("__TAURI_INTERNALS__" in window) return;
       const { ParticleField } = await import("@/landing/ParticleField");
       const canvas = canvasRef.current;
       if (!canvas || disposed) return;
