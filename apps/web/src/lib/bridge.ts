@@ -34,6 +34,12 @@ export function useBridge(): { status: BridgeStatus; recheck: () => void } {
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
+    // No bridge in the desktop app (native http_fetch replaces it) — skip the
+    // probe entirely rather than firing a pointless request to 127.0.0.1:7391.
+    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+      setStatus("offline");
+      return;
+    }
     let cancelled = false;
     setStatus("checking");
     pingBridge().then((ok) => {

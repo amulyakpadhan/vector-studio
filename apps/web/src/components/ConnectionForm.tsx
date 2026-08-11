@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createConnector, EMBEDDING_MODELS, KEYLESS_PROVIDERS, type DbEngine, type EmbeddingProvider } from "@vyn/core";
 import { useConnections, resolveEmbedding, toConfig, type SavedConnection } from "@/lib/store";
 import { useBridge, BRIDGE_URL } from "@/lib/bridge";
+import { useIsTauri } from "@/lib/useIsTauri";
 import { useEscape } from "@/lib/useEscape";
 
 const EMBEDDING_PROVIDERS: { value: EmbeddingProvider; label: string; hint?: string }[] = [
@@ -139,18 +140,23 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
     return Object.keys(out).length ? out : undefined;
   }
 
+  // The desktop app reaches every DB directly through the native http_fetch
+  // proxy (no browser CORS), so the local bridge is dead weight there — hide
+  // its UI and never route through it.
+  const isTauri = useIsTauri();
   const bridge = useBridge();
   // When the bridge comes online for a new connection that likely needs it,
-  // default the toggle on (once) — the user can still turn it off.
+  // default the toggle on (once) — the user can still turn it off. Never in
+  // the desktop app, where the bridge isn't used at all.
   const [autoDefaulted, setAutoDefaulted] = useState(false);
   useEffect(() => {
-    if (!existing && !autoDefaulted && bridge.status === "online" && likelyNeedsBridge(engine, url)) {
+    if (!isTauri && !existing && !autoDefaulted && bridge.status === "online" && likelyNeedsBridge(engine, url)) {
       setUseBridgeOn(true);
       setAutoDefaulted(true);
     }
-  }, [bridge.status, engine, url, existing, autoDefaulted]);
+  }, [isTauri, bridge.status, engine, url, existing, autoDefaulted]);
 
-  const bridgeUrl = useBridgeOn ? BRIDGE_URL : undefined;
+  const bridgeUrl = !isTauri && useBridgeOn ? BRIDGE_URL : undefined;
   const engineDef = ENGINES.find((e) => e.value === engine)!;
   const urlOk = engineDef.needsUrl ? url.trim() !== "" : true;
   const keyOk = engineDef.needsKey ? apiKey.trim() !== "" : true;
@@ -282,41 +288,43 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
           />
         </div>
 
-        <div className="field">
-          <label
-            style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer", marginBottom: 0 }}
-          >
-            <input
-              type="checkbox"
-              checked={useBridgeOn}
-              onChange={(e) => {
-                setUseBridgeOn(e.target.checked);
-                setTest({ kind: "idle" });
-              }}
-              style={{ width: 15, height: 15, accentColor: "var(--accent)" }}
-            />
-            <span style={{ color: "var(--text)" }}>Route through local bridge</span>
-            <span className={`status ${bridge.status === "online" ? "ok" : bridge.status === "offline" ? "off" : ""}`} style={{ marginLeft: "auto" }}>
-              <span className="dot" />
-              {bridge.status === "online" ? "detected" : bridge.status === "checking" ? "checking…" : "not running"}
-            </span>
-          </label>
-          <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 7 }}>
-            {looksLocal(url) || engine === "pinecone" || looksQdrantCloud(engine, url)
-              ? "Recommended — self-hosted and CORS-restricted DBs need the bridge to be reachable from the browser."
-              : "Only needed for self-hosted or CORS-restricted databases."}
-            {bridge.status === "offline" && (
-              <>
-                {" "}Clone the repo and run <code style={{ color: "var(--accent-bright)" }}>pnpm bridge</code> then{" "}
-                <button type="button" className="btn ghost sm" style={{ padding: "1px 6px" }} onClick={bridge.recheck}>
-                  re-check
-                </button>
-              </>
-            )}
+        {!isTauri && (
+          <div className="field">
+            <label
+              style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer", marginBottom: 0 }}
+            >
+              <input
+                type="checkbox"
+                checked={useBridgeOn}
+                onChange={(e) => {
+                  setUseBridgeOn(e.target.checked);
+                  setTest({ kind: "idle" });
+                }}
+                style={{ width: 15, height: 15, accentColor: "var(--accent)" }}
+              />
+              <span style={{ color: "var(--text)" }}>Route through local bridge</span>
+              <span className={`status ${bridge.status === "online" ? "ok" : bridge.status === "offline" ? "off" : ""}`} style={{ marginLeft: "auto" }}>
+                <span className="dot" />
+                {bridge.status === "online" ? "detected" : bridge.status === "checking" ? "checking…" : "not running"}
+              </span>
+            </label>
+            <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 7 }}>
+              {looksLocal(url) || engine === "pinecone" || looksQdrantCloud(engine, url)
+                ? "Recommended — self-hosted and CORS-restricted DBs need the bridge to be reachable from the browser."
+                : "Only needed for self-hosted or CORS-restricted databases."}
+              {bridge.status === "offline" && (
+                <>
+                  {" "}Clone the repo and run <code style={{ color: "var(--accent-bright)" }}>pnpm bridge</code> then{" "}
+                  <button type="button" className="btn ghost sm" style={{ padding: "1px 6px" }} onClick={bridge.recheck}>
+                    re-check
+                  </button>
+                </>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
-        {useBridgeOn && bridge.status === "offline" && (
+        {!isTauri && useBridgeOn && bridge.status === "offline" && (
           <div className="banner err">The bridge isn’t running — start it with `pnpm bridge` from the repo, or this connection won’t reach the database.</div>
         )}
 
@@ -362,7 +370,7 @@ export function ConnectionForm({ existing, onClose, onSaved }: Props) {
                   value={embedBaseUrl}
                   onChange={(e) => setEmbedBaseUrl(e.target.value)}
                 />
-                {(looksLocal(embedBaseUrl) || embedBaseUrl.trim() === "") && (
+                {!isTauri && (looksLocal(embedBaseUrl) || embedBaseUrl.trim() === "") && (
                   <div style={{ color: "var(--text-faint)", fontSize: 12, marginTop: 5 }}>
                     Local server — turn on the bridge above if the studio can&apos;t reach it directly.
                   </div>
