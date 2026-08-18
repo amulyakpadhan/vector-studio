@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppLink as Link } from "@/components/AppLink";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CollectionInfo, DbEngine } from "@vyn/core";
 import { useConnections } from "@/lib/store";
-import { useWorkbench } from "@/lib/workbenchStore";
+import { useWorkbench, SIDEBAR_MIN, SIDEBAR_MAX } from "@/lib/workbenchStore";
 import { connectorFor } from "@/lib/connector";
 import { Brand } from "./Brand";
 import { EngineBadge } from "./EngineBadge";
@@ -31,6 +31,50 @@ export function Studio({ connectionId }: { connectionId: string }) {
   useEffect(() => {
     openConnection(connectionId);
   }, [connectionId, openConnection]);
+
+  // ─── collections rail: collapse + resize ──────────────────────────────
+  const sidebarCollapsed = useWorkbench((s) => s.sidebarCollapsed);
+  const sidebarWidth = useWorkbench((s) => s.sidebarWidth);
+  const toggleSidebar = useWorkbench((s) => s.toggleSidebar);
+  const setSidebarWidth = useWorkbench((s) => s.setSidebarWidth);
+  const resetSidebarWidth = useWorkbench((s) => s.resetSidebarWidth);
+  const [resizing, setResizing] = useState(false);
+  const gridRef = useRef<HTMLDivElement>(null);
+  /* The store rehydrates from localStorage only on the client, so the collapsed
+     state is applied after mount — otherwise the server and client would
+     disagree on the first paint. */
+  const collapsed = hydrated && sidebarCollapsed;
+
+  // Ctrl/Cmd-B — the shortcut editors use for the same action.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleSidebar();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleSidebar]);
+
+  /** Drag the divider. Width is measured from the grid's own left edge so it
+   *  stays correct regardless of page scroll or surrounding chrome. */
+  const startResize = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const left = gridRef.current?.getBoundingClientRect().left ?? 0;
+      setResizing(true);
+      const onMove = (ev: PointerEvent) => setSidebarWidth(ev.clientX - left);
+      const onUp = () => {
+        setResizing(false);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [setSidebarWidth],
+  );
 
   const activeConnectionId = useWorkbench((s) => s.activeConnectionId);
   const workspace = useWorkbench((s) => (activeConnectionId ? s.byConnection[activeConnectionId] : undefined));
@@ -134,13 +178,25 @@ export function Studio({ connectionId }: { connectionId: string }) {
 
   return (
     <div className="shell">
-      <Topbar connName={conn?.name} engine={conn?.engine} />
+      <Topbar
+        connName={conn?.name}
+        engine={conn?.engine}
+        sidebarCollapsed={collapsed}
+        onToggleSidebar={toggleSidebar}
+      />
       <ConnectionTabs />
-      <div className="studio">
-        <aside className="sidebar">
+      <div
+        ref={gridRef}
+        className={`studio${collapsed ? " sidebar-collapsed" : ""}${resizing ? " resizing" : ""}`}
+        style={hydrated ? ({ "--sidebar-w": `${sidebarWidth}px` } as React.CSSProperties) : undefined}
+      >
+        <aside className="sidebar" inert={collapsed || undefined}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 6px" }}>
             <div className="sidebar-label" style={{ padding: "8px 4px 6px" }}>
               Collections
+              {collections.data && collections.data.length > 0 && (
+                <span className="sidebar-count">{collections.data.length}</span>
+              )}
             </div>
             <button
               className="btn ghost sm"
@@ -191,6 +247,31 @@ export function Studio({ connectionId }: { connectionId: string }) {
               </div>
             ))}
         </aside>
+
+        {!collapsed && (
+          <div
+            className="sidebar-resizer"
+            onPointerDown={startResize}
+            onDoubleClick={resetSidebarWidth}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize collections rail"
+            aria-valuenow={sidebarWidth}
+            aria-valuemin={SIDEBAR_MIN}
+            aria-valuemax={SIDEBAR_MAX}
+            tabIndex={0}
+            title="Drag to resize · double-click to reset"
+            onKeyDown={(e) => {
+              if (e.key === "ArrowLeft") {
+                e.preventDefault();
+                setSidebarWidth(sidebarWidth - (e.shiftKey ? 40 : 10));
+              } else if (e.key === "ArrowRight") {
+                e.preventDefault();
+                setSidebarWidth(sidebarWidth + (e.shiftKey ? 40 : 10));
+              }
+            }}
+          />
+        )}
 
         <section className="main">
           {openTabs.length > 0 && (
@@ -273,9 +354,36 @@ export function Studio({ connectionId }: { connectionId: string }) {
   );
 }
 
-function Topbar({ connName, engine }: { connName?: string; engine?: DbEngine }) {
+function Topbar({
+  connName,
+  engine,
+  sidebarCollapsed,
+  onToggleSidebar,
+}: {
+  connName?: string;
+  engine?: DbEngine;
+  sidebarCollapsed?: boolean;
+  onToggleSidebar?: () => void;
+}) {
   return (
     <header className="topbar">
+      {onToggleSidebar && (
+        <button
+          className="icon-btn sidebar-toggle"
+          onClick={onToggleSidebar}
+          aria-label={sidebarCollapsed ? "Show collections" : "Hide collections"}
+          aria-expanded={!sidebarCollapsed}
+          /* Platform-neutral on purpose: choosing ⌘ vs Ctrl from `navigator`
+             during render would differ between the server and client passes. */
+          title={`${sidebarCollapsed ? "Show" : "Hide"} collections (Ctrl/⌘ B)`}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.3" />
+            <line x1="6" y1="2.5" x2="6" y2="13.5" stroke="currentColor" strokeWidth="1.3" />
+            {!sidebarCollapsed && <rect x="2.5" y="3.5" width="2.5" height="9" rx="1" fill="currentColor" />}
+          </svg>
+        </button>
+      )}
       <Brand />
       {connName && (
         <div className="crumbs">

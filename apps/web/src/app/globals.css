@@ -286,6 +286,33 @@ body.tauri-titlebar-active {
 .btn:active {
   transform: translateY(1px);
 }
+
+/* Square, chrome-less button for a bare glyph (e.g. the sidebar toggle). */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-faint);
+  border-radius: var(--radius);
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.icon-btn:hover {
+  color: var(--text);
+  background: var(--bg-elev-2);
+  border-color: var(--border);
+}
+.icon-btn:active {
+  transform: translateY(1px);
+}
+/* Pulls the toggle toward the window edge so it reads as chrome, not content. */
+.sidebar-toggle {
+  margin-left: -6px;
+}
 .btn.primary {
   background: var(--accent);
   border-color: transparent;
@@ -646,17 +673,94 @@ tbody tr:hover {
 
 .studio {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  /* Width is driven by --sidebar-w so the rail can be dragged; the fallback
+     keeps the server-rendered pass identical to the pre-hydration client. */
+  grid-template-columns: var(--sidebar-w, 260px) 1fr;
   /* A hard height (not min-height) caps the grid at the viewport, so
      .sidebar and .main each scroll independently within it instead of the
      whole page growing and scrolling as one when either side gets tall. */
   height: calc(100vh - 56px);
+  position: relative;
+  transition: grid-template-columns 180ms ease;
 }
 .sidebar {
   border-right: 1px solid var(--border);
   background: linear-gradient(180deg, var(--bg-elev) 0%, var(--bg) 130%);
   padding: 16px 10px;
   overflow-y: auto;
+  /* Let the grid column decide the width, so collapsing can animate it to
+     zero without the contents holding the track open. */
+  min-width: 0;
+}
+
+/* ─── collections rail: collapse + resize ────────────────────
+   Collapsing takes the column to zero rather than leaving an icon strip —
+   the toggle lives in the topbar, so it stays reachable with the rail shut. */
+.studio.sidebar-collapsed {
+  grid-template-columns: 0 1fr;
+}
+.studio.sidebar-collapsed > .sidebar {
+  padding-left: 0;
+  padding-right: 0;
+  border-right-color: transparent;
+  overflow: hidden;
+  /* Keeps the contents out of the tab order and off screen readers while the
+     rail is visually shut (paired with `inert` on the element itself). */
+  visibility: hidden;
+}
+/* No width animation while dragging — it would lag a frame behind the cursor. */
+.studio.resizing {
+  transition: none;
+  user-select: none;
+  cursor: col-resize;
+}
+
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* Centered on the seam: a 9px grab target over a 1px visual border. */
+  left: calc(var(--sidebar-w, 260px) - 4px);
+  width: 9px;
+  z-index: 5;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+}
+.sidebar-resizer::after {
+  /* The 1px line that actually lights up, centered in the wider grab zone. */
+  content: "";
+  position: absolute;
+  inset: 0 4px;
+  background: transparent;
+  transition: background 0.15s;
+}
+.sidebar-resizer:hover::after,
+.sidebar-resizer:focus-visible::after,
+.studio.resizing .sidebar-resizer::after {
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+.sidebar-resizer:focus-visible {
+  outline: none;
+}
+
+.sidebar-count {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio {
+    transition: none;
+  }
 }
 .sidebar-label {
   font-size: 11px;
