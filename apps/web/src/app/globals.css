@@ -735,7 +735,14 @@ tbody tr:hover {
   background: transparent;
   transition: background 0.15s;
 }
-.sidebar-resizer:hover::after,
+/* Hover is a neutral lift, not an accent: the rail's active-collection marker
+   is a plain 3px aqua bar, and a glowing divider would out-shout it — chrome
+   should never read louder than the content state it sits beside. Aqua is
+   reserved for the two moments the divider genuinely is the active thing:
+   a drag in progress, and keyboard focus. */
+.sidebar-resizer:hover::after {
+  background: var(--border-bright);
+}
 .sidebar-resizer:focus-visible::after,
 .studio.resizing .sidebar-resizer::after {
   background: var(--accent);
