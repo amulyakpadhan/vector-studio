@@ -9,10 +9,22 @@ interface ConnectionWorkspace {
   activeCollection: string | null;
 }
 
+/** Bounds for the collections rail: below MIN names stop being readable, above
+ *  MAX the collection view starts to suffer. */
+export const SIDEBAR_MIN = 180;
+export const SIDEBAR_MAX = 480;
+export const SIDEBAR_DEFAULT = 260;
+
 interface WorkbenchState {
   openConnectionIds: string[];
   activeConnectionId: string | null;
   byConnection: Record<string, ConnectionWorkspace>;
+  /** Collections rail — hidden entirely, and how wide it is when shown. */
+  sidebarCollapsed: boolean;
+  sidebarWidth: number;
+  toggleSidebar: () => void;
+  setSidebarWidth: (width: number) => void;
+  resetSidebarWidth: () => void;
   openConnection: (id: string) => void;
   closeConnection: (id: string) => void;
   setActiveConnection: (id: string) => void;
@@ -39,6 +51,13 @@ export const useWorkbench = create<WorkbenchState>()(
       openConnectionIds: [],
       activeConnectionId: null,
       byConnection: {},
+      sidebarCollapsed: false,
+      sidebarWidth: SIDEBAR_DEFAULT,
+
+      toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+      setSidebarWidth: (width) =>
+        set({ sidebarWidth: Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(width))) }),
+      resetSidebarWidth: () => set({ sidebarWidth: SIDEBAR_DEFAULT }),
 
       openConnection: (id) =>
         set((s) => ({
