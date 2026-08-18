@@ -201,6 +201,33 @@ textarea {
 .btn:active {
   transform: translateY(1px);
 }
+
+/* Square, chrome-less button for a bare glyph (e.g. the sidebar toggle). */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-faint);
+  border-radius: var(--radius);
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.icon-btn:hover {
+  color: var(--text);
+  background: var(--bg-elev-2);
+  border-color: var(--border);
+}
+.icon-btn:active {
+  transform: translateY(1px);
+}
+/* Pull the toggle toward the window edge so it reads as chrome, not content. */
+.sidebar-toggle {
+  margin-left: -6px;
+}
 .btn.primary {
   background: var(--accent);
   border-color: transparent;
@@ -566,12 +593,37 @@ tbody tr:hover {
      .sidebar and .main each scroll independently within it instead of the
      whole page growing and scrolling as one when either side gets tall. */
   height: calc(100vh - 56px);
+  transition: grid-template-columns 180ms ease;
 }
 .sidebar {
   border-right: 1px solid var(--border);
   background: linear-gradient(180deg, var(--bg-elev) 0%, var(--bg) 130%);
   padding: 16px 10px;
   overflow-y: auto;
+  /* Let the column drive the width so collapsing can animate it to zero
+     without the content forcing the track back open. */
+  min-width: 0;
+}
+
+/* ─── collapsed collections rail ─────────────────────────────
+   The rail collapses to a zero-width column; the toggle lives in the topbar
+   so it stays reachable when there is nothing left to click on. */
+.studio.sidebar-collapsed {
+  grid-template-columns: 0 1fr;
+}
+.studio.sidebar-collapsed > .sidebar {
+  padding-left: 0;
+  padding-right: 0;
+  border-right-color: transparent;
+  overflow: hidden;
+  /* Keeps the contents from being read by assistive tech or tabbed into
+     while the rail is visually closed (paired with `inert` on the element). */
+  visibility: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio {
+    transition: none;
+  }
 }
 .sidebar-label {
   font-size: 11px;

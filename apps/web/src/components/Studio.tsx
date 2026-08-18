@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CollectionInfo, DbEngine } from "@vyn/core";
@@ -10,6 +10,9 @@ import { Brand } from "./Brand";
 import { EngineBadge } from "./EngineBadge";
 import { CollectionView } from "./CollectionView";
 import { CreateCollectionModal } from "./CreateCollectionModal";
+
+/** Remembers whether the collections rail is collapsed, across reloads. */
+const SIDEBAR_KEY = "vyn.sidebarCollapsed";
 
 export function Studio({ connectionId }: { connectionId: string }) {
   const conn = useConnections((s) => s.get(connectionId));
@@ -22,8 +25,35 @@ export function Studio({ connectionId }: { connectionId: string }) {
   const [collFilter, setCollFilter] = useState("");
   const [dragTab, setDragTab] = useState<string | null>(null);
   const [dragOverTab, setDragOverTab] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => setHydrated(true), []);
+
+  // Restore the collapsed state after mount (never during render — reading
+  // localStorage on the server would desync the first paint).
+  useEffect(() => {
+    setSidebarCollapsed(localStorage.getItem(SIDEBAR_KEY) === "1");
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((v) => {
+      const next = !v;
+      localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0");
+      return next;
+    });
+  }, []);
+
+  // Ctrl/Cmd-B — the same shortcut editors use for this.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleSidebar();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleSidebar]);
 
   const connector = useMemo(() => (conn ? connectorFor(conn) : null), [conn]);
 
@@ -101,9 +131,14 @@ export function Studio({ connectionId }: { connectionId: string }) {
 
   return (
     <div className="shell">
-      <Topbar connName={conn?.name} engine={conn?.engine} />
-      <div className="studio">
-        <aside className="sidebar">
+      <Topbar
+        connName={conn?.name}
+        engine={conn?.engine}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={toggleSidebar}
+      />
+      <div className={`studio${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
+        <aside className="sidebar" inert={sidebarCollapsed || undefined}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 6px" }}>
             <div className="sidebar-label" style={{ padding: "8px 4px 6px" }}>
               Collections
@@ -238,9 +273,36 @@ export function Studio({ connectionId }: { connectionId: string }) {
   );
 }
 
-function Topbar({ connName, engine }: { connName?: string; engine?: DbEngine }) {
+function Topbar({
+  connName,
+  engine,
+  sidebarCollapsed,
+  onToggleSidebar,
+}: {
+  connName?: string;
+  engine?: DbEngine;
+  sidebarCollapsed?: boolean;
+  onToggleSidebar?: () => void;
+}) {
   return (
     <header className="topbar">
+      {onToggleSidebar && (
+        <button
+          className="icon-btn sidebar-toggle"
+          onClick={onToggleSidebar}
+          aria-label={sidebarCollapsed ? "Show collections" : "Hide collections"}
+          aria-expanded={!sidebarCollapsed}
+          // Platform-neutral on purpose: picking ⌘ vs Ctrl from `navigator`
+          // during render would differ between the server and client passes.
+          title={`${sidebarCollapsed ? "Show" : "Hide"} collections (Ctrl/⌘ B)`}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.3" />
+            <line x1="6" y1="2.5" x2="6" y2="13.5" stroke="currentColor" strokeWidth="1.3" />
+            {!sidebarCollapsed && <rect x="2.5" y="3.5" width="2.5" height="9" rx="1" fill="currentColor" />}
+          </svg>
+        </button>
+      )}
       <Brand />
       {connName && (
         <div className="crumbs">
