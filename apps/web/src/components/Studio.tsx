@@ -12,6 +12,7 @@ import { EngineBadge } from "./EngineBadge";
 import { CollectionView } from "./CollectionView";
 import { CreateCollectionModal } from "./CreateCollectionModal";
 import { ConnectionTabs } from "./ConnectionTabs";
+import { ThemeToggle } from "./ThemeToggle";
 
 /**
  * `connectionId` is the connection this route wants open + active — the workbench itself may
@@ -395,6 +396,7 @@ function Topbar({
         </div>
       )}
       <div className="spacer" />
+      <ThemeToggle />
       <Link className="btn ghost sm" href="/studio">
         ← All connections
       </Link>
