@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Brand } from "./Brand";
 import { Dashboard } from "./Dashboard";
 import { Studio } from "./Studio";
+import { ThemeToggle } from "./ThemeToggle";
 import { GITHUB_URL } from "@/lib/links";
 
 /**
@@ -23,6 +24,7 @@ export function StudioRouter() {
       <header className="topbar">
         <Brand />
         <div className="spacer" />
+        <ThemeToggle />
         <a className="btn ghost sm" href={GITHUB_URL} target="_blank" rel="noreferrer">
           GitHub
         </a>

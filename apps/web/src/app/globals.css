@@ -15,6 +15,11 @@
   --accent: #1fe0c4;
   --accent-bright: #4bf0d8;
   --accent-glow: rgba(31, 224, 196, 0.28);
+  /* Text/icons sitting ON an accent fill. Dark here because the aqua is
+     bright; the light theme flips it, so never hardcode a colour on accent. */
+  --on-accent: #04140f;
+  /* The faint tint behind .shell — accent at very low alpha. */
+  --shell-glow: rgba(31, 224, 196, 0.07);
 
   /* gradient partner = violet (brand mark, viz depth ramp) */
   --violet: #7a5cff;
@@ -39,6 +44,75 @@
      exists for position: fixed elements (e.g. .lp-nav), which ignore body
      padding entirely and need their own top offset. */
   --titlebar-h: 0px;
+}
+
+/* ── light theme ───────────────────────────────────────────
+   Same identity, re-weighted for a bright ground. The signature #1fe0c4
+   is ~1.6:1 on white — unreadable as text or a border — so the accent
+   deepens to a teal that keeps the hue but clears contrast, and --on-accent
+   flips to white. Everything else is the dark ramp inverted.
+
+   Three states, two rules:
+     • no stored preference        -> this OS-preference block decides
+     • preference = "light"        -> the explicit block below wins outright
+     • preference = "dark"         -> bare :root above stays in effect
+   ThemeToggle writes data-theme; layout.tsx's inline script applies a saved
+   choice before first paint so there is no flash to correct. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f6f8fa;
+    --bg-elev: #ffffff;
+    --bg-elev-2: #eef2f6;
+    --border: #dce4ec;
+    --border-bright: #bcc9d6;
+    --text: #0c141c;
+    --text-dim: #4a5b6d;
+    --text-faint: #7a8b9d;
+
+    --accent: #0d9e88;
+    --accent-bright: #0a8674;
+    --accent-glow: rgba(13, 158, 136, 0.22);
+    --on-accent: #ffffff;
+    --shell-glow: rgba(13, 158, 136, 0.06);
+
+    --violet: #6544d8;
+    --violet-bright: #5433c4;
+
+    --coral: #d92d55;
+    --coral-glow: rgba(217, 45, 85, 0.22);
+
+    --cyan: #0a6fbd;
+    --green: #10805c;
+    --red: #d92d55;
+    --amber: #a06a00;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f6f8fa;
+  --bg-elev: #ffffff;
+  --bg-elev-2: #eef2f6;
+  --border: #dce4ec;
+  --border-bright: #bcc9d6;
+  --text: #0c141c;
+  --text-dim: #4a5b6d;
+  --text-faint: #7a8b9d;
+
+  --accent: #0d9e88;
+  --accent-bright: #0a8674;
+  --accent-glow: rgba(13, 158, 136, 0.22);
+  --on-accent: #ffffff;
+  --shell-glow: rgba(13, 158, 136, 0.06);
+
+  --violet: #6544d8;
+  --violet-bright: #5433c4;
+
+  --coral: #d92d55;
+  --coral-glow: rgba(217, 45, 85, 0.22);
+
+  --cyan: #0a6fbd;
+  --green: #10805c;
+  --red: #d92d55;
+  --amber: #a06a00;
 }
 
 * {
@@ -90,7 +164,7 @@ textarea {
   /* A faint, slowly drifting glow instead of a flat fill — continuity with
      the landing page's field without running an actual WebGL canvas here.
      Data screens should stay cheap and calm, so this is CSS-only. */
-  background: radial-gradient(ellipse 120% 60% at 50% -10%, rgba(31, 224, 196, 0.07), transparent 60%), var(--bg);
+  background: radial-gradient(ellipse 120% 60% at 50% -10%, var(--shell-glow), transparent 60%), var(--bg);
   background-attachment: fixed;
 }
 
@@ -152,7 +226,7 @@ body.tauri-titlebar-active {
   place-items: center;
   font-size: 10px;
   font-weight: 700;
-  color: #04140f;
+  color: var(--on-accent);
   flex: none;
 }
 .tauri-titlebar-name {
@@ -218,7 +292,7 @@ body.tauri-titlebar-active {
   place-items: center;
   font-size: 13px;
   font-weight: 700;
-  color: #04140f;
+  color: var(--on-accent);
 }
 
 .crumbs {
@@ -316,7 +390,7 @@ body.tauri-titlebar-active {
 .btn.primary {
   background: var(--accent);
   border-color: transparent;
-  color: #04140f;
+  color: var(--on-accent);
   font-weight: 600;
   box-shadow: 0 2px 18px var(--accent-glow);
 }
@@ -384,7 +458,7 @@ body.tauri-titlebar-active {
   place-items: center;
   font-weight: 700;
   font-size: 15px;
-  color: #04140f;
+  color: var(--on-accent);
   background: var(--grad);
 }
 .avatar-qdrant {
