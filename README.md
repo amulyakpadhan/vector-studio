@@ -74,6 +74,12 @@ Same posture as Compass, TablePlus, and Postman.
 <div align="center">
   <br/>
 
+  <a href="docs/assets/studio.png">
+    <img src="docs/assets/studio.png" alt="Vyn Studio — browsing a collection" width="820" />
+  </a>
+
+  <br/><br/>
+
   <a href="docs/assets/projection.png">
     <img src="docs/assets/projection.png" alt="Vyn Studio — 3D embedding projection" width="820" />
   </a>
